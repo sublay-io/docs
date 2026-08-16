@@ -100,6 +100,61 @@ const result = await sublay.spaces.handleCommentReport({
 
 ---
 
+### handleSpaceChatReport
+
+Resolves a reported chat message in a space conversation by applying one or more actions.
+
+```typescript
+const result = await sublay.spaces.handleSpaceChatReport({
+  spaceId: "spc_abc123",
+  reportId: "rep_111",
+  actions: ["remove-message"],
+  messageId: "msg_222",
+  summary: "Removed for harassment",
+});
+```
+
+<ParamField body="spaceId" type="string" required>
+  The Sublay space ID.
+</ParamField>
+
+<ParamField body="reportId" type="string" required>
+  The ID of the report to resolve.
+</ParamField>
+
+<ParamField body="actions" type="string[]" required>
+  One or more actions to apply: `"remove-message"`, `"ban-user"`, and/or `"dismiss"`.
+</ParamField>
+
+<ParamField body="summary" type="string">
+  A summary of the resolution.
+</ParamField>
+
+<ParamField body="reason" type="string">
+  The reason for the resolution.
+</ParamField>
+
+<ParamField body="userId" type="string">
+  The user to ban — the ban **target**, not the moderator. Required when `actions` includes `"ban-user"`.
+</ParamField>
+
+<ParamField body="messageId" type="string">
+  The message to remove. Required when `actions` includes `"remove-message"`.
+</ParamField>
+
+<ParamField body="actingUserId" type="string">
+  The moderator the action is attributed to. Attribution only — this route is service-key god-mode, so omit it for a backend/system action.
+</ParamField>
+
+<Note>
+  `ban-user` is space-scoped: it sets the target's space membership to banned.
+  Project-wide suspension is a separate dashboard action.
+</Note>
+
+**Returns** — `Promise<{ message: string; code: string }>`
+
+---
+
 ## Content Moderation
 
 ### moderateSpaceEntity

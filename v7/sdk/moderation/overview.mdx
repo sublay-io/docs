@@ -100,11 +100,15 @@ Space-level moderation must be **integrated in your application**. Users with an
 
 - Built into your app using the provided hooks
 - Can only view reports for content within their space
-- Can remove entities and comments within their space
+- Can remove entities, comments, and chat messages within their space
 - Can ban users from their space only
 - Cannot access reports or take action in other spaces
 
 ## Report Reasons
+
+Reports must use one of these keys — the API rejects anything else with
+`report/invalid-body`. Use `other` together with the free-text `details` field
+for anything the list doesn't cover.
 
 | Key | Label |
 |-----|-------|
