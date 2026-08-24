@@ -31,7 +31,7 @@ Edits a workspace's own `name` and/or `metadata`. Gated by the `edit-workspace` 
 
   The [node SDK](/node-sdk/workspaces) is stricter than this endpoint: it types `actingUserId` as **required** here, so omitting it is only possible by calling the REST route directly.
 
-  Two shapes are refused rather than ignored on this path: `actingUserId: ""` or `null` is a `400` (it reads as an *attempt* to name someone, not as "nobody"), and when the request names nobody, any unrecognized top-level body or query field is a `400` too — a misspelled actor must not read as an absent one. See [Shapes the server rejects](/sdk/workspaces/overview#shapes-the-server-rejects).
+  Three shapes are refused rather than ignored on this path. `actingUserId: ""` or `null` is a `400` — it reads as an *attempt* to name someone, not as "nobody". And when the request names nobody, so is any **undeclared** top-level body or query field that looks like a misdirected actor (a name containing `user` or `acting`, or a UUID value under any name), and any body whose `Content-Type` is not `application/json` — an unparsed body discards the `actingUserId` inside it just as surely as a misspelling would. Fields this endpoint declares are never judged that way, whatever they are named or carry. See [Shapes the server rejects](/sdk/workspaces/overview#shapes-the-server-rejects).
 </ParamField>
 
 ## Response
@@ -45,5 +45,20 @@ Returns the updated [Workspace](/data-models/workspace) object.
     ```json
     { "error": "You do not have the edit-workspace capability.", "code": "workspace/unauthorized" }
     ```
+  </Accordion>
+  <Accordion title="Invalid Path Parameter — 400">
+    ```json
+    { "error": "Invalid workspace id: expected a UUID.", "code": "workspace/invalid-params" }
+    ```
+    Every path id on the workspaces bundle is checked for UUID shape before the route runs, so a malformed one is a plain `400` rather than a `500` from the database.
+  </Accordion>
+  <Accordion title="Unparsed Body — 400">
+    ```json
+    {
+      "error": "This request carries a body with content-type \"text/plain;charset=UTF-8\", which no parser reads, so any `actingUserId` inside it was discarded — the request would run with full authority as the app itself. Send the body as application/json.",
+      "code": "workspace/invalid-body"
+    }
+    ```
+    Returned when a service/master key sends a body with a `Content-Type` other than `application/json` **and** no `actingUserId` was read. Sublay parses only `application/json`, so the actor inside such a body is discarded and the request would fall through to the unbounded path. `fetch()` sends `text/plain;charset=UTF-8` when you pass a stringified body and set no headers — set the header. An empty JSON body and a bodiless request both pass. See [Shapes the server rejects](/sdk/workspaces/overview#shapes-the-server-rejects).
   </Accordion>
 </AccordionGroup>

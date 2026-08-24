@@ -124,4 +124,15 @@ The same roster read by a caller who cannot manage people here — the `member` 
 
 `total` is the **distinct-user seat number** (owner + direct members), **not** the sum of buckets (buckets overlap). Ancestor-owners and reach-holders are never counted as seats.
 
+## Error Responses
+
+<AccordionGroup>
+  <Accordion title="Invalid Path Parameter — 400">
+    ```json
+    { "error": "Invalid workspace id: expected a UUID.", "code": "workspace/invalid-params" }
+    ```
+    Every path id on the workspaces bundle is checked for UUID shape before the route runs, so a malformed one is a plain `400` rather than a `500` from the database.
+  </Accordion>
+</AccordionGroup>
+
 See also: [useFetchWorkspaceMembers](/hooks/workspaces/use-fetch-workspace-members) · [Fetch Member Standing](/api-reference/workspaces/members/fetch-member-standing)

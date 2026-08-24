@@ -69,6 +69,12 @@ This read is inherently a **self** read (or a privileged-key read of a named use
     ```
     A plain user token sent an `actingUserId` naming a **different** user. Only a service/master key may resolve someone else's standing.
   </Accordion>
+  <Accordion title="Invalid Path Parameter — 400">
+    ```json
+    { "error": "Invalid workspace id: expected a UUID.", "code": "workspace/invalid-params" }
+    ```
+    Every path id on the workspaces bundle is checked for UUID shape before the route runs, so a malformed one is a plain `400` rather than a `500` from the database.
+  </Accordion>
 </AccordionGroup>
 
 See also: [useFetchWorkspaceAuthority](/hooks/workspaces/use-fetch-workspace-authority) · [fetchWorkspaceAuthority (node-sdk)](/node-sdk/workspaces) · [fetchWorkspaceAuthority (js-sdk)](/js-sdk/workspaces)

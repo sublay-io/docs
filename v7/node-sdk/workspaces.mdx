@@ -72,16 +72,24 @@ The `workspaces` module is the developer's **authorization-server SDK** for the 
 </Note>
 
 <Warning>
-  **Absent, not falsy — and no stray fields on the unbounded path.**
+  **Absent, not falsy — and nothing actor-shaped on the unbounded path.**
   `actingUserId: ""` or `null` is a `400`, not a fall-through to the app-itself
   mode, so `actingUserId: user?.id ?? ""` fails loudly rather than quietly
-  acquiring full authority. And when a key names **nobody**, any unrecognized
-  top-level field in the body or query is a `400` as well — a misspelled actor
-  must not read as "no actor". A key that *did* name someone stays permissive,
-  and `fetchWorkspace` is exempt (its schema strips unknown query params before
-  the actor is read, so a typo there is silently dropped and the read runs
-  unbounded — check that one yourself). Full list with the reasoning:
+  acquiring full authority. And when a key names **nobody**, a `400` also
+  follows any **undeclared** top-level field that looks like a misdirected
+  actor — a name containing `user` or `acting`, or a UUID value under any name.
+  Fields the API declares are exempt from that judgement, so `newOwnerId`,
+  `username` and `parentWorkspaceId` all travel normally. A key that *did* name
+  someone stays permissive. A `userId` anywhere in a body or query is refused
+  for every caller (the invitee on `createWorkspaceInvite` is the sole
+  exception), and a non-UUID id in a path is a `400 workspace/invalid-params`
+  rather than a `500`. Full list with the reasoning:
   [Shapes the server rejects](/sdk/workspaces/overview#shapes-the-server-rejects).
+
+  One of those rules cannot bite you through this SDK: a body whose content-type
+  no parser reads is refused on the unbounded path, and this SDK serializes every
+  body it sends as `application/json`. It is a hazard for hand-rolled `fetch()`
+  calls, not for `sublay.workspaces.*`.
 </Warning>
 
 Read the concepts first: [capabilities vs permissions](/data-models/workspace-member#the-two-arrays-capabilities-vs-permissions), [rank](/data-models/workspace-member#rank-semantics), [reach & ownership](/data-models/workspace#reach-and-the-wall-door-rule), and the [identity-matched, no-token invite model](/data-models/workspace-invitation#acceptance-model).
@@ -122,7 +130,7 @@ const workspace = await sublay.workspaces.fetchWorkspace({
 
 <ParamField body="workspaceId" type="string" required>The workspace UUID.</ParamField>
 <ParamField body="include" type="string">Comma-separated include flags; `memberCount` adds the direct member count.</ParamField>
-<ParamField body="actingUserId" type="string">Optional — the user to act as. Sent as a query param. Visibility resolves against them, so a key acting as someone with no relation to this workspace gets that user's `404`. Omit to read as the app itself. **Spell it carefully:** this endpoint's query schema strips unrecognized params before the actor is read, so a mistyped `actingUserId` is dropped silently and the read runs unbounded — no `400` warns you. See [Fetch Workspace](/api-reference/workspaces/fetch-workspace).</ParamField>
+<ParamField body="actingUserId" type="string">Optional — the user to act as. Sent as a query param. Visibility resolves against them, so a key acting as someone with no relation to this workspace gets that user's `404`. Omit to read as the app itself.</ParamField>
 
 ### fetchManyWorkspaces
 

@@ -81,4 +81,15 @@ Caller with a plain relation, reading **someone else's** standing — the four a
 - `rank` is the direct-membership rank, or `null` for owners / ancestor-owners / reach-only holders (they sit outside the numbered ladder).
 - `relativeRank` is that same position expressed as an **offset from the caller** — `2` above means the target sits two rungs below you; a negative value means they are *senior* to you, and `0` means they are your peer. `null` exactly when `rank` is `null`. The caller's own anchor is their member row on this workspace if they hold one, and apex (one step above rank 0) otherwise — so an owner reads a rank-0 member back as `1`. See [rank semantics](/data-models/workspace-member#two-coordinates-rank-and-relativerank).
 
+## Error Responses
+
+<AccordionGroup>
+  <Accordion title="Invalid Path Parameter — 400">
+    ```json
+    { "error": "Invalid workspace id: expected a UUID.", "code": "workspace/invalid-params" }
+    ```
+    Every path id on the workspaces bundle is checked for UUID shape before the route runs, so a malformed one is a plain `400` rather than a `500` from the database.
+  </Accordion>
+</AccordionGroup>
+
 See also: [useFetchWorkspaceMemberStanding](/hooks/workspaces/use-fetch-workspace-member-standing) · [List Members](/api-reference/workspaces/members/list-members) · [Read Authority](/api-reference/workspaces/fetch-authority)

@@ -116,4 +116,10 @@ Returns the updated [WorkspaceMember](/data-models/workspace-member) object.
     ```
     A plain user token sent an `actingUserId` naming a **different** user. Only a service/master key may act as someone else.
   </Accordion>
+  <Accordion title="Invalid Path Parameter — 400">
+    ```json
+    { "error": "Invalid workspace id: expected a UUID.", "code": "workspace/invalid-params" }
+    ```
+    Every path id on the workspaces bundle is checked for UUID shape before the route runs, so a malformed one is a plain `400` rather than a `500` from the database.
+  </Accordion>
 </AccordionGroup>
