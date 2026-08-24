@@ -42,19 +42,35 @@ Each entry's `reasons[]` contains `{ type, ...detail }` objects. A user present 
 
 <Note>
   **`descendant-member` rows carry `rank` but never `relativeRank`.** Rank is **per-workspace**, so an offset measured against your standing on *this* node against a rank on *another* node would be arithmetic across two different ladders — a number that looks authoritative and is wrong. The field is uniformly absent on descendant rows rather than present only where a per-node anchor happens to have been resolved, so its presence never depends on who is asking. Their absolute `rank` is still there.
+
+  **Presence and fencing follow different rules on these rows, deliberately.** `relativeRank` is *uniformly* absent from every `descendant-member` row for every caller, while the fence below is decided **per node**. Do not read the two as one rule. A field that shows up for some callers and not others is awkward to consume; an authority field that is fenced on some nodes and not others is a hole — so the cosmetic inconsistency is accepted and the security one is not.
 </Note>
 
 <Warning>
-  **The authority-bearing detail fields are fenced.** `capabilities`, `permissions`, `rank` and `relativeRank` are **omitted from a reason** (absent — not `null`) on **other users'** entries unless the caller:
+  **The authority-bearing detail fields are fenced, and the gate is evaluated PER NODE — not once per request.** `capabilities`, `permissions`, `rank` and `relativeRank` are **omitted from a reason** (absent — not `null`) on **other users'** entries unless the caller, judged **on the workspace that reason belongs to**:
 
-  - holds one of the four people-operating capabilities on this workspace — `invite`, `remove-member`, `edit-member-access`, `edit-member-profile`; **or**
-  - is the workspace's `owner` or an `ancestor-owner`; **or**
+  - holds one of the four people-operating capabilities there — `invite`, `remove-member`, `edit-member-access`, `edit-member-profile`; **or**
+  - is that workspace's `owner` or an `ancestor-owner`; **or**
   - is a service/master key acting as **itself** (naming no `actingUserId`). A key that **does** name one is fenced exactly as that user is — see [Acting on behalf of a user](/sdk/workspaces/overview#acting-on-behalf-of-a-user).
 
-  The caller's **own** entry always carries them in full, so anyone can discover their own access. Who is on the roster — `user`, the reason `type`s, `title`, `metadata`, `viaWorkspaceId`, `workspaceId` — stays visible to any relation. Treat the four fields as optional in your types.
+  For `owner`, `member`, `ancestor-owner` and `reach-holder` reasons, that workspace **is** the one in the path. For a `descendant-member` reason it is the descendant named by the reason's own `workspaceId`, so the verdict is re-taken there. "Judged on that node" means your **resolved** standing there — which includes capabilities [reaching](/data-models/workspace#reach-and-the-wall-door-rule) in through an unbroken open inherit chain, and ownership from any ancestor. What it does *not* include is authority that stops at a **sealed** boundary.
+
+  The caller's **own** entry always carries them in full, on every node, so anyone can discover their own access. Who is on the roster — `user`, the reason `type`s, `title`, `metadata`, `viaWorkspaceId`, `workspaceId` — stays visible to any relation. Treat the four fields as optional in your types.
 
   `relativeRank` is fenced **with** `rank`, not beside it: it is `rank` minus the caller's own anchor, a number the caller already knows, so returning it to a fenced caller would reconstruct the fenced `rank` exactly.
 </Warning>
+
+<Note>
+  **Worked example — operating people on the parent is not operating people on the child.** Workspace `P` has a **sealed** child `C` (`inheritsFromParent: false`). Bob holds `invite` on `P`; on `C` he is a plain rank-5 member with no capabilities. Dana is a rank-2 member of `C`.
+
+  Bob calls `GET /workspaces/P/members?include=descendants`:
+
+  - **Dana's `descendant-member` reason (node `C`)** — `workspaceId` only. Bob still learns *that* Dana is on `C`, because he has a relation to `C` and its roster is unsealed to him; but `rank`, `capabilities` and `permissions` are omitted, because on `C` he operates nobody. His `invite` on `P` buys him nothing there — the seal stops it from reaching down.
+  - **Bob's own `descendant-member` reason (node `C`)** — full. A caller always sees their own access.
+  - Had `C` been **open** instead of sealed, Bob's `invite` would reach into `C`, he would clear the fence there, and Dana's authority fields would be present — correctly.
+
+  Sealing ("may I see this roster at all?") and the fence ("may I see its members' authority?") are two different tiers, and clearing the first does not clear the second. On any given node, `include=descendants` hands you exactly the authority fields that node's own roster read (`GET /workspaces/C/members`) would hand you — never more.
+</Note>
 
 ## Response (array mode)
 

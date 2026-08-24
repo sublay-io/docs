@@ -11,12 +11,14 @@ Requires **roster visibility** — any relation to the workspace (owner, ancesto
 `reasons` is an array of **structured entries** — `{ type, viaWorkspaceId? }` — the same object shape a [roster](/api-reference/workspaces/members/list-members) entry's `reasons` carries. `viaWorkspaceId` names the granting ancestor and appears on `ancestor-owner` / `reach-holder` only.
 
 <Warning>
-  **The authority-bearing fields are fenced.** `capabilities`, `permissions`, `rank` and `relativeRank` are **omitted from the response** (absent — not `null`) unless the caller:
+  **The authority-bearing fields are fenced, and the gate is scoped to THIS workspace.** `capabilities`, `permissions`, `rank` and `relativeRank` are **omitted from the response** (absent — not `null`) unless the caller:
 
   - holds one of the four people-operating capabilities on this workspace — `invite`, `remove-member`, `edit-member-access`, `edit-member-profile`; **or**
-  - is the workspace's `owner` or an `ancestor-owner`; **or**
+  - is this workspace's `owner` or an `ancestor-owner`; **or**
   - is asking about **themselves** (a caller always sees their own access); **or**
   - is a service/master key acting as **itself** (naming no `actingUserId`). A key that **does** name one is fenced exactly as that user is — see [Acting on behalf of a user](/sdk/workspaces/overview#acting-on-behalf-of-a-user).
+
+  The gate is a **per-node** verdict, not a global one: clearing it here says nothing about any other node, and clearing it elsewhere says nothing about here. "On this workspace" means your **resolved** standing on it — including capabilities [reaching](/data-models/workspace#reach-and-the-wall-door-rule) in from an ancestor through an unbroken open inherit chain, and ownership from any ancestor — but not authority that stops at a **sealed** boundary. The [roster read](/api-reference/workspaces/members/list-members) takes the same verdict independently for each `descendant-member` row it returns, so the two reads agree node for node.
 
   Everything else — `user`, `reasons`, `title`, `metadata` — is visible to any relation. Treat these four fields as optional in your types.
 

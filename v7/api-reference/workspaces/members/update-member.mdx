@@ -36,15 +36,15 @@ All optional; the controller enforces which tier each touched field belongs to. 
 </ParamField>
 
 <ParamField body="rank" type="number">
-  New **absolute** rank (powerful — `edit-member-access` + rank rules). Mutually exclusive with `relativeRank`. Omitting both leaves rank unchanged.
+  New **absolute** rank, `0` – `2147483647` (powerful — `edit-member-access` + rank rules). Mutually exclusive with `relativeRank`. Omitting both leaves rank unchanged.
 </ParamField>
 
 <ParamField body="relativeRank" type="number">
-  New rank expressed as an **offset from the acting user**: `1` = one rung below me. Must be `>= 1` — `0` (a peer) and negatives are a `400`. Mutually exclusive with `rank`, and with **no default**: omitting both leaves rank unchanged.
+  New rank expressed as an **offset from the acting user**: `1` = one rung below me. Must be `1` – `2147483647` — `0` (a peer) and negatives are a `400`. The **resolved** value is bounded too, so an in-range offset that overflows once anchored is a `400`, not a `500`. Mutually exclusive with `rank`, and with **no default**: omitting both leaves rank unchanged.
 
   Anchored on the actor's **own rank if they hold a member row on this workspace**, apex (one step above rank 0) otherwise — the anchor turns on the row, not on what kind of actor they are. Resolved to an absolute number at write time and stored absolute; it is a **snapshot** and does not follow the actor's own rank afterwards.
 
-  Because an in-ladder anchor is `>= 0` and the offset is `>= 1`, a direct-member actor can never reach rank `0` this way. Rank `0` remains owner-only, via absolute `rank: 0`.
+  Because an in-ladder anchor is `>= 0` and the offset is `>= 1`, a direct-member actor can never reach rank `0` this way — and neither can they by naming absolute `rank: 0`, which the assign rule below refuses for exactly the same reason (nothing is strictly below `0`). There is no separate rank-0 guard: rank `0` is effectively owner-only because the owner skips the rank block, not because a check names them. An actor with **no** member row here (an ancestor owner, a cross-node reach holder, a key naming nobody) also skips it.
 </ParamField>
 
 <ParamField body="title" type="string">
@@ -72,9 +72,23 @@ Returns the updated [WorkspaceMember](/data-models/workspace-member) object.
     ```
   </Accordion>
   <Accordion title="Insufficient Rank — 403">
+    Two distinct messages share this code. The **act** rule, on the target:
+
     ```json
-    { "error": "You may only act on members ranked strictly below you.", "code": "workspace/insufficient-rank" }
+    { "error": "You may only manage members ranked strictly below you.", "code": "workspace/insufficient-rank" }
     ```
+
+    …and the **assign** rule, on the rank you asked for — checked against the resolved absolute value, so `rank` and `relativeRank` face it identically. This is also what refuses `rank: 0` to anyone holding a row on this workspace:
+
+    ```json
+    { "error": "You may only set ranks strictly below your own.", "code": "workspace/insufficient-rank" }
+    ```
+  </Accordion>
+  <Accordion title="Rank out of range — 400">
+    ```json
+    { "error": "The resolved rank (2147483648) is out of range — ranks are integers from 0 to 2147483647.", "code": "workspace/invalid-body" }
+    ```
+    Checked after the offset is resolved. Out-of-range `rank` / `relativeRank` input is refused earlier by the schema, with the same code.
   </Accordion>
   <Accordion title="Both rank coordinates supplied — 400">
     ```json

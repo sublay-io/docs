@@ -66,7 +66,9 @@ Returns the created [WorkspaceInvitation](/data-models/workspace-invitation) obj
 | `workspace/missing-invite-accept-url` | 409 | The **project** has no [`workspaces.inviteAcceptUrl`](/sdk/workspaces/overview#project-settings) configured, so the invite email would have nowhere to link. Nothing is persisted. A misconfiguration to fix in project settings, not something the end user can act on — surface it to yourself, not to them. |
 
 <Warning>
-  **Leaning on the default puts everyone on the same rung.** A rank-0 lead inviting six people with no rank field gets six rank-1 members — and equals cannot act on equals, so none of them can manage each other; only the lead can. Fine for a flat team, worth deciding deliberately if your product has tiers.
+  **Omitting the rank field is the easiest way to mint rank 0.** The default is "one rung below me", and a signed-in user with **no member row on this workspace** — the workspace's `owner`, an ancestor owner, or a reach holder — anchors at apex, so their default lands on **rank 0**, the most senior rung. That is correct (one below apex *is* the top rung), but it is the opposite of what "I left the field off" usually implies. If a caller with no row here should be inviting people to the *bottom* of the ladder, name a coordinate instead.
+
+  **For an in-ladder inviter it collapses into a flat layer.** A rank-0 lead inviting six people with no rank field gets six rank-1 members — and equals cannot act on equals, so none of them can manage each other; only the lead can. Fine for a flat team, worth deciding deliberately if your product has tiers.
 </Warning>
 
 ## Related
