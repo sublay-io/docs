@@ -94,10 +94,14 @@ A service or master key therefore has exactly two modes:
 
 | Mode | Wire shape | Authority |
 |------|-----------|-----------|
-| **The app itself** | no `actingUserId` | Unbounded. Every capability, owner-only and rank check is skipped. |
+| **The app itself** | the field is **absent** | Unbounded — where the route has an unbounded path at all. Every capability, owner-only and rank check is skipped. |
 | **A named user** | `actingUserId: "<uuid>"` | Exactly that user's. Their capabilities, their rank, their visibility, their fencing — the same answer their own token would get. |
 
-A plain user token has only one mode: itself. Naming anyone else is a `403 workspace/unauthorized`.
+<Warning>
+  **"The app itself" means the field is *absent*, not falsy.** `actingUserId: ""` and `actingUserId: null` are a caller *attempting* to name someone, and they are a `400`, never a fall-through to the unbounded mode. So `actingUserId: user?.id ?? ""` — the shape a backend reaches for naturally — fails loudly instead of quietly acquiring full authority. That is the point: a request that believed it was binding to a user must never be promoted to the app itself. Only omitting the key entirely (or sending `undefined`, which is indistinguishable from omission) selects that mode. See [Shapes the server rejects](#shapes-the-server-rejects).
+</Warning>
+
+A plain user token has only one mode: itself. Sending your **own** user id is a harmless no-op — the resolved actor is the same either way — but naming **anyone else** is a `403 workspace/unauthorized`. The field is never silently ignored for a user token.
 
 Naming an acting user is not a hint or an audit field. It **binds**: if the named user would be refused, so are you. That covers the capability gate, the owner-only gate, the rank guard, [no-escalation](/data-models/workspace-member#no-privilege-escalation), roster/standing [fencing](#what-a-client-app-can-do), and the visibility `404` on a workspace the named user has no relation to.
 
@@ -130,6 +134,73 @@ On roughly half the bundle the actor is **required**, so acting-as-a-user is not
 
 The unbounded path survives on the rest — the guard-only routes (`updateWorkspace`, `updateWorkspaceInheritFlag`, `deleteWorkspace`, `transferWorkspaceOwnership`, the invite outbox reads and `revoke`/`resend`), the three reads, and `createWorkspaceInvite`.
 
+<Note>
+  **The [node SDK](/node-sdk/workspaces) types are stricter than the wire on four of those routes.** `updateWorkspace`, `updateWorkspaceInheritFlag`, `deleteWorkspace` and `transferWorkspaceOwnership` accept an omitted actor over REST — that request runs as the app itself — but the node SDK declares `actingUserId` **required** on all four, so TypeScript will not let you omit it. That is a deliberate guardrail on the four most destructive owner-only calls, not a different server rule. Reach the unbounded path on them by calling the REST endpoint directly.
+</Note>
+
+### Shapes the server rejects
+
+Four request shapes are refused outright rather than ignored. All four are `400`s carrying `workspace/invalid-body` or `workspace/invalid-query`, depending on where the offending field sat.
+
+<AccordionGroup>
+  <Accordion title="A body or query `userId` — 400">
+    ```json
+    {
+      "error": "`userId` is not the acting user on workspace routes — it addresses the target. Use `actingUserId` to act on behalf of a user.",
+      "code": "workspace/invalid-body"
+    }
+    ```
+
+    On a workspace route `userId` **never** names the caller — it addresses the request *target*. The rejection is unconditional: it fires for user tokens and keys alike, and even when a correct `actingUserId` is also present, because a request carrying both is malformed regardless.
+
+    **One exception:** the invitee `userId` on [Create Invite](/api-reference/workspaces/invitations/create-invite), where the field has always meant the target. The path parameter `:userId` (on the member routes) is untouched — that is the target too.
+  </Accordion>
+
+  <Accordion title="An empty or null `actingUserId` — 400">
+    ```json
+    { "error": "Invalid actingUserId.", "code": "workspace/invalid-body" }
+    ```
+
+    The actor is read by **presence**, not truthiness. `""`, `null` and a non-UUID string are all a caller *attempting* to name someone, and they fail here rather than falling through to the unbounded mode. (On routes whose schema declares the field, the rejection may come from the schema instead and read `actingUserId: Invalid UUID` — same status, same code, same outcome.)
+
+    This is the trap behind `actingUserId: user?.id ?? ""`. A backend writing that believes it is binding the call to a user; if the empty string read as "named nobody" it would instead receive full owner authority on routes including `DELETE /workspaces/:id`. Only an absent key (or `undefined`, which is indistinguishable from omission) selects the app-itself mode.
+  </Accordion>
+
+  <Accordion title="A near-miss spelling of `actingUserId` — 400">
+    ```json
+    {
+      "error": "`actingUserID` is not a recognized field — did you mean `actingUserId`? A misspelled acting user names nobody, which would run this request unbound instead of on that user's behalf.",
+      "code": "workspace/invalid-body"
+    }
+    ```
+
+    Any key that differs from `actingUserId` only in capitalization — `actingUserID`, `ActingUserId`, `actinguserid` — gets this precise message. It fires on **every** request, user tokens included, where a typo cannot escalate anything but still means your stated intent was silently dropped.
+  </Accordion>
+
+  <Accordion title="An unrecognized field, when the request names nobody — 400">
+    ```json
+    {
+      "error": "Unrecognized body field: acting_user_id. This request names no acting user, so it would run with full authority as the app itself — an unrecognized field is refused here in case it was a misspelled `actingUserId`. Name an acting user, or remove the field.",
+      "code": "workspace/invalid-body"
+    }
+    ```
+
+    When a service/master key names **no** acting user, every top-level field in the body and query string must be one the workspaces bundle recognizes. An unknown key — `acting_user_id`, `actingUseId`, `actingUserId ` with a trailing space, or anything else — refuses the request instead of running it.
+
+    **One route is outside this check:** the single-workspace read, [`GET /workspaces/:id`](/api-reference/workspaces/fetch-workspace). Its query schema strips unrecognized parameters before the actor is read, so a mistyped `actingUserId` there is dropped rather than refused, and the read runs unbounded. It is the only route with an unbounded path that has no guard running ahead of validation. Nothing is *granted* that omitting the field would not also grant — but you will not get the `400` that tells you your parameter was ignored, so check the spelling yourself on that call.
+  </Accordion>
+</AccordionGroup>
+
+<Warning>
+  **Why the last one is asymmetric — and it is deliberately asymmetric.** A **user token**, or a key that **did** name an actor, stays permissive: an unrecognized field there is ignored as it always was. Only the *unbounded* path is strict.
+
+  The reason is what an ignored field could mean on each path. Under a token, the actor comes from the token no matter what you send, so a stray key changes nothing — there is no authority to gain. Under a key naming nobody, absence-of-actor *is* the signal that grants full owner authority, so a field the server does not recognize is exactly the shape of an actor the server failed to read: one mistyped character and a request the caller believed was bound to one person runs as the app, on routes that cascade-delete a whole subtree. Enumerating bad spellings cannot close that — `acting_user_id`, which every snake_case backend emits by default, is not a "near miss" by any string metric. So the check is inverted on that path only: refuse to infer god-mode from an absence when the request also carries something unexplained.
+
+  It **fails closed**. If Sublay adds a field to a workspaces schema and forgets to whitelist it, a legitimate unbounded request starts `400`-ing — never the reverse. For a bundle where a missing field means unlimited authority, an outage is the correct direction to fail in.
+
+  The recognized set is the **union** across the whole bundle rather than a per-route list, so a field that is legitimate on some other workspaces route (`name`, `rank`, `countOnly`, `page`, …) will not trip this check even where it does nothing. The list exists to spot an *attempt to name an actor*, not to validate each route's shape — that is the schema's job.
+</Warning>
+
 ### Consequence: accepting an invite on someone's behalf
 
 [`acceptWorkspaceInvite`](/api-reference/workspaces/invitations/accept-invite) is bound like everything else, so a backend auto-join flow must satisfy the invitee's own gates:
@@ -149,7 +220,11 @@ Rank is strict — you may only act on, and invite at, a rank **strictly below**
 | **another rank-5 manager** | someone ranked 0–4, or the owner |
 | **a rank-0 member** | the **owner** — no ranked member clears the floor |
 
-This is not new behavior, but it is easy to hit for the first time when a backend stops running as an implicit owner. If your "add a manager" button is server-driven, act as the owner for it. The floor applies only to an inviter with a **direct member row** on the workspace, so it is skipped for an owner or ancestor owner, for a cross-node [reach](/data-models/workspace#reach-and-the-wall-door-rule) holder with no direct row, and for a key naming nobody.
+This is not new behavior, but it is easy to hit for the first time when a backend stops running as an implicit owner. If your "add a manager" button is server-driven, act as the owner for it. The floor applies only to an actor with a **direct member row** on the workspace, so it is skipped for an owner or ancestor owner, and for a cross-node [reach](/data-models/workspace#reach-and-the-wall-door-rule) holder with no direct row.
+
+<Note>
+  **"A key naming nobody" skips the floor on [Create Invite](/api-reference/workspaces/invitations/create-invite) — and nowhere else.** Invite is the one rank-assigning route with an unbounded path left, so a key that names no inviter genuinely faces no floor there. [Update Member](/api-reference/workspaces/members/update-member) has **no** unbounded path: its actor is required, so a key naming nobody is a `400 workspace/missing-user-id` rather than an exemption. On that route a key is always somebody, and faces exactly that somebody's floors.
+</Note>
 
 ## Choosing a rank
 
@@ -183,7 +258,7 @@ Owners, ancestor owners, reach holders and keys acting as themselves normally ha
 
 One consequence worth knowing: because an in-ladder anchor is `>= 0` and a write offset is `>= 1`, **a direct member can never mint rank 0 through the relative form** — the arithmetic simply cannot reach it. The absolute form does not need a special case either. Naming `rank: 0` outright is refused by the ordinary **assign rule**, which requires a strictly larger number than your own: an actor with a member row here is at rank `>= 0`, and nothing is strictly below `0`. They get `403 workspace/insufficient-rank` — *"You may only set ranks strictly below your own."* on [Update Member](/api-reference/workspaces/members/update-member), or *"You may only invite at a rank strictly below your own."* on [Create Invite](/api-reference/workspaces/invitations/create-invite).
 
-There is **no separate "only the owner may assign rank 0" check** — owners are the only minters of rank 0 because they skip the rank block entirely, not because a guard names them. So rank 0 is reachable by the owner, and by any actor with **no member row on this workspace** — an ancestor owner, a [reach](/data-models/workspace#reach-and-the-wall-door-rule) holder or a key naming nobody — who skips or clears the same floor and, from `relativeRank: 1`, anchors at apex and lands on 0.
+There is **no separate "only the owner may assign rank 0" check** — owners are the only minters of rank 0 because they skip the rank block entirely, not because a guard names them. So rank 0 is reachable by the owner, and by any actor with **no member row on this workspace** — an ancestor owner or a [reach](/data-models/workspace#reach-and-the-wall-door-rule) holder — who skips or clears the same floor and, from `relativeRank: 1`, anchors at apex and lands on 0. On [Create Invite](/api-reference/workspaces/invitations/create-invite) only, a **key naming nobody** joins that list; on [Update Member](/api-reference/workspaces/members/update-member) it cannot, because the actor is required there (see the note [above](#consequence-a-tier-cannot-grow-itself)).
 
 <Warning>
   **A relative offset is a snapshot, not a live link.** It is resolved once, at write time, and frozen as an absolute number. Invite at `relativeRank: 1` while you are rank 1 and they land on rank 2 — get promoted to rank 0 later and they are still 2, now two rungs below you rather than one. Nothing re-derives.

@@ -65,6 +65,8 @@ This endpoint doubles as an **upsert**, so a second call for a target who alread
 
 <ParamField body="userId" type="string">
   Invitee user id (existing users only). Here `userId` is the invite **target**, not an acting user.
+
+  This route is the **one exception** to a bundle-wide rule: on every other workspace route a body or query `userId` is rejected with a `400`, because there it can only be a stale spelling of the actor. See [Shapes the server rejects](/sdk/workspaces/overview#shapes-the-server-rejects).
 </ParamField>
 
 <ParamField body="username" type="string">
@@ -100,7 +102,7 @@ This endpoint doubles as an **upsert**, so a second call for a target who alread
 </ParamField>
 
 <ParamField body="actingUserId" type="string">
-  Service/master keys only — the **inviter** to act as. Enforced: the no-escalation and rank floors above run against *that* user's resolved standing, so a key naming a rank-5 manager may only invite at rank 6+ and only with capabilities that manager holds. Omit it to invite as the app itself (unbounded; `invitedBy` then falls back to the workspace owner). Distinct from `userId` above, which addresses the **invitee**. See [Acting on behalf of a user](/sdk/workspaces/overview#acting-on-behalf-of-a-user).
+  Service/master keys only — the **inviter** to act as. Enforced: the no-escalation and rank floors above run against *that* user's resolved standing, so a key naming a rank-5 manager may only invite at rank 6+ and only with capabilities that manager holds. Omit it to invite as the app itself (unbounded; `invitedBy` then falls back to the workspace owner) — but omit means **absent**: `actingUserId: ""` or `null` is a `400`, not a fall-through to that mode. When the field is absent, any unrecognized top-level body or query field is a `400` too, so a misspelled actor cannot read as an absent one. Distinct from `userId` above, which addresses the **invitee**. See [Acting on behalf of a user](/sdk/workspaces/overview#acting-on-behalf-of-a-user) and [Shapes the server rejects](/sdk/workspaces/overview#shapes-the-server-rejects).
 </ParamField>
 
 ## Response

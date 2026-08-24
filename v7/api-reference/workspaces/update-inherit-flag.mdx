@@ -23,6 +23,10 @@ Flips the workspace's `inheritsFromParent` flag — the switch controlling wheth
 
 <ParamField body="actingUserId" type="string">
   Service/master keys only — the user to act as. **Enforced:** the owner-only guard runs against the named user, so a key naming a non-owner is refused exactly as that user would be. Omit it to act as the app itself (unbounded). The `workspace/inherit-enforced` project lock is a separate gate and applies either way. See [Acting on behalf of a user](/sdk/workspaces/overview#acting-on-behalf-of-a-user).
+
+  The [node SDK](/node-sdk/workspaces) is stricter than this endpoint: it types `actingUserId` as **required** here, so omitting it is only possible by calling the REST route directly.
+
+  Two shapes are refused rather than ignored on this path: `actingUserId: ""` or `null` is a `400` (it reads as an *attempt* to name someone, not as "nobody"), and when the request names nobody, any unrecognized top-level body or query field is a `400` too — a misspelled actor must not read as an absent one. See [Shapes the server rejects](/sdk/workspaces/overview#shapes-the-server-rejects).
 </ParamField>
 
 ## Response

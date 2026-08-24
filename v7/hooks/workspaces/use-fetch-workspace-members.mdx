@@ -8,6 +8,14 @@ icon: "plug"
 
 `useFetchWorkspaceMembers` returns a callable for the [unified roster](/api-reference/workspaces/members/list-members): one entry per distinct user, each with a `reasons` array. Always returned in full (never paginated). With `countOnly`, the shape is `WorkspaceRosterCountsResponse` instead.
 
+<Warning>
+  **No `page` / `limit` — and passing them does nothing.** This roster is never paginated. `FetchWorkspaceMembersProps` carries only `workspaceId`, `include` and `countOnly`, and the hook builds its query string from exactly those three — so a `page` or `limit` hand-written past the types is never even sent. Calling the [REST route](/api-reference/workspaces/members/list-members) directly does not help: the server ignores both silently, with no error and no effect, and returns the **entire** roster looking like page 1.
+
+  The response is `{ data, total }` — no `pagination` object, because there is no pagination. `total` equals `data.length`.
+
+  For counts, pass `countOnly` — it returns per-reason counts and a distinct-user total without materializing the roster array. For a windowed UI, slice `roster.data` client-side.
+</Warning>
+
 ## Usage Example
 
 ```tsx

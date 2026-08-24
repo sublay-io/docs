@@ -6,7 +6,7 @@ description: "Full server-side workspace surface — CRUD, membership, invitatio
 The `workspaces` module is the developer's **authorization-server SDK** for the [Workspaces bundle](/data-models/workspace). It exposes the full surface: workspace CRUD, membership management, the invitation lifecycle, and the service-key **authority read** you use to make your own app-level decisions.
 
 <Note>
-  **Requires the `workspaces` bundle.** See [Bundles](/bundles) to install it. Because this is a **service-key** SDK, every call **accepts** an `actingUserId` — the user the action is performed **as** (the service key can [act as any user](/node-sdk/overview)). Whether it is required or optional is **per route** — see the note below. For `fetchWorkspaceAuthority`, `actingUserId` is the user whose standing is resolved.
+  **Requires the `workspaces` bundle.** See [Bundles](/bundles) to install it. Because this is a **service-key** SDK, every call **accepts** an `actingUserId` — the user the action is performed **as** (the service key can [act as any user](/node-sdk/overview)). Whether it is required or optional is **per route** — see the notes below. For `fetchWorkspaceAuthority`, `actingUserId` is the user whose standing is resolved.
 </Note>
 
 <Note>
@@ -19,7 +19,8 @@ The `workspaces` module is the developer's **authorization-server SDK** for the 
   capability gate, the owner-only gate, the rank guard, no-escalation, and the
   roster/standing fencing. If that user would be refused, so are you. Omitting
   `actingUserId` is the only unbounded mode — that request is the *app itself*,
-  not a person.
+  not a person — and it exists only on the routes that have an unbounded path at
+  all (see the two notes below).
 
   So an unrestricted backend action should be performed **as the workspace
   owner**, not by omitting the actor: the owner resolves the full capability
@@ -35,16 +36,53 @@ The `workspaces` module is the developer's **authorization-server SDK** for the 
 </Warning>
 
 <Note>
-  **On many routes the actor is required, not optional.** `actingUserId` must be
-  supplied by a key on the routes whose result belongs to a specific person:
+  **On many routes the actor is required, not optional.** These ten routes have
+  **no unbounded path on the server** — their result belongs to a specific
+  person, so a key must name one:
+
   `createWorkspace`, `fetchManyWorkspaces`, `fetchMyWorkspaceInvites`,
   `fetchWorkspaceAuthority`, `acceptWorkspaceInvite`, `declineWorkspaceInvite`,
-  `leaveWorkspace`, `updateWorkspaceMember`, `removeWorkspaceMember` and
-  `removeWorkspaceMemberFromSubtree`. Omitting it there is a
-  `400 workspace/missing-user-id`, never a bypass. Everywhere else it is
-  optional and omitting it runs unbounded.
+  `leaveWorkspace`, `updateWorkspaceMember`, `removeWorkspaceMember`,
+  `removeWorkspaceMemberFromSubtree`.
+
+  Omitting `actingUserId` on any of them is a `400 workspace/missing-user-id`,
+  never a bypass. `actingUserId` is typed **required** on all ten.
 </Note>
 
+<Note>
+  **Four more are typed required *here* even though the REST endpoint allows
+  omission.** `updateWorkspace`, `updateWorkspaceInheritFlag`, `deleteWorkspace`
+  and `transferWorkspaceOwnership` are guard-only routes: over REST, a key that
+  omits `actingUserId` runs as the app itself and passes the owner-only gate
+  unbounded. This SDK nevertheless declares `actingUserId` **required** on all
+  four, so TypeScript will not let you omit it.
+
+  That is an SDK-level guardrail, not a different server rule — these are the
+  four most destructive owner-only calls (`deleteWorkspace` cascades the whole
+  subtree), and every one of them is better off carrying a user id. If you
+  genuinely need the unbounded path on one of them, call the
+  [REST endpoint](/api-reference/workspaces/delete-workspace) directly; the
+  server accepts it.
+
+  On the remaining seven — `fetchWorkspace`, `fetchWorkspaceMembers`,
+  `fetchWorkspaceMemberStanding`, `createWorkspaceInvite`,
+  `fetchWorkspaceInvites`, `revokeWorkspaceInvite`, `resendWorkspaceInvite` —
+  `actingUserId` is optional in both the SDK and the API, and omitting it runs
+  unbounded.
+</Note>
+
+<Warning>
+  **Absent, not falsy — and no stray fields on the unbounded path.**
+  `actingUserId: ""` or `null` is a `400`, not a fall-through to the app-itself
+  mode, so `actingUserId: user?.id ?? ""` fails loudly rather than quietly
+  acquiring full authority. And when a key names **nobody**, any unrecognized
+  top-level field in the body or query is a `400` as well — a misspelled actor
+  must not read as "no actor". A key that *did* name someone stays permissive,
+  and `fetchWorkspace` is exempt (its schema strips unknown query params before
+  the actor is read, so a typo there is silently dropped and the read runs
+  unbounded — check that one yourself). Full list with the reasoning:
+  [Shapes the server rejects](/sdk/workspaces/overview#shapes-the-server-rejects).
+</Warning>
 
 Read the concepts first: [capabilities vs permissions](/data-models/workspace-member#the-two-arrays-capabilities-vs-permissions), [rank](/data-models/workspace-member#rank-semantics), [reach & ownership](/data-models/workspace#reach-and-the-wall-door-rule), and the [identity-matched, no-token invite model](/data-models/workspace-invitation#acceptance-model).
 
@@ -84,7 +122,7 @@ const workspace = await sublay.workspaces.fetchWorkspace({
 
 <ParamField body="workspaceId" type="string" required>The workspace UUID.</ParamField>
 <ParamField body="include" type="string">Comma-separated include flags; `memberCount` adds the direct member count.</ParamField>
-<ParamField body="actingUserId" type="string">Optional — the user to act as. Sent as a query param. Visibility resolves against them, so a key acting as someone with no relation to this workspace gets that user's `404`. Omit to read as the app itself.</ParamField>
+<ParamField body="actingUserId" type="string">Optional — the user to act as. Sent as a query param. Visibility resolves against them, so a key acting as someone with no relation to this workspace gets that user's `404`. Omit to read as the app itself. **Spell it carefully:** this endpoint's query schema strips unrecognized params before the actor is read, so a mistyped `actingUserId` is dropped silently and the read runs unbounded — no `400` warns you. See [Fetch Workspace](/api-reference/workspaces/fetch-workspace).</ParamField>
 
 ### fetchManyWorkspaces
 
@@ -116,7 +154,7 @@ await sublay.workspaces.updateWorkspace({
 Edits name/metadata (gated by `edit-workspace` or owner). Does **not** flip the inherit flag.
 
 <ParamField body="workspaceId" type="string" required />
-<ParamField body="actingUserId" type="string" required>The user to act as — must hold `edit-workspace` on this workspace, or own it.</ParamField>
+<ParamField body="actingUserId" type="string" required>The user to act as — must hold `edit-workspace` on this workspace, or own it. Required by this SDK's types; the [REST endpoint](/api-reference/workspaces/update-workspace) also accepts it omitted (runs unbounded).</ParamField>
 <ParamField body="name" type="string" />
 <ParamField body="metadata" type="object" />
 
@@ -133,7 +171,7 @@ await sublay.workspaces.updateWorkspaceInheritFlag({
 Owner-only in both directions; subject to the enforced-default lock.
 
 <ParamField body="workspaceId" type="string" required />
-<ParamField body="actingUserId" type="string" required>The user to act as — must own this workspace or an ancestor.</ParamField>
+<ParamField body="actingUserId" type="string" required>The user to act as — must own this workspace or an ancestor. Required by this SDK's types; the [REST endpoint](/api-reference/workspaces/update-inherit-flag) also accepts it omitted (runs unbounded).</ParamField>
 <ParamField body="inheritsFromParent" type="boolean" required />
 
 ### deleteWorkspace
@@ -148,7 +186,7 @@ const { message } = await sublay.workspaces.deleteWorkspace({
 Owner-only; cascades the subtree and fires `workspace.deleted` per deleted workspace — and **no** `workspace.member.removed` events for the memberships it tears down (see [Webhooks](/sdk/workspaces/webhooks)).
 
 <ParamField body="workspaceId" type="string" required />
-<ParamField body="actingUserId" type="string" required>The user to act as — must own this workspace or an ancestor. This call cascade-deletes the whole subtree, so name the owner deliberately.</ParamField>
+<ParamField body="actingUserId" type="string" required>The user to act as — must own this workspace or an ancestor. This call cascade-deletes the whole subtree, so name the owner deliberately. Required by this SDK's types; the [REST endpoint](/api-reference/workspaces/delete-workspace) also accepts it omitted (runs unbounded) — which is precisely why the type does not.</ParamField>
 
 ### transferWorkspaceOwnership
 
@@ -163,10 +201,10 @@ const workspace = await sublay.workspaces.transferWorkspaceOwnership({
 ```
 
 <ParamField body="workspaceId" type="string" required />
-<ParamField body="actingUserId" type="string" required>The user to act as — must own this workspace or an ancestor.</ParamField>
+<ParamField body="actingUserId" type="string" required>The user to act as — must own this workspace or an ancestor. Required by this SDK's types; the [REST endpoint](/api-reference/workspaces/transfer-ownership) also accepts it omitted (runs unbounded).</ParamField>
 <ParamField body="newOwnerId" type="string" required>The new owner (any verified user).</ParamField>
 <ParamField body="previousOwnerDisposition" type="string">`"demote"` or `"remove"`.</ParamField>
-<ParamField body="previousOwnerRank" type="number">On demote, the ex-owner's rank (absolute only). Defaults to **one rung below the acting user's anchor** — `0` when the actor is apex (a key naming nobody, or an owner/ancestor owner with no member row here), or one below their own row when the named `actingUserId` sits in this workspace's ladder.</ParamField>
+<ParamField body="previousOwnerRank" type="number">On demote, the ex-owner's rank (absolute only). Defaults to **one rung below the acting user's anchor** — `0` when the actor is apex (an owner or ancestor owner with no member row here, which is the usual case), or one below their own row when the named `actingUserId` sits in this workspace's ladder. (A key naming nobody also anchors at apex, but this SDK requires `actingUserId` here, so that shape is only reachable over REST.)</ParamField>
 <ParamField body="previousOwnerCapabilities" type="string[]" />
 
 ---
@@ -235,7 +273,7 @@ Rank moves in **either coordinate** — `rank` (absolute) or `relativeRank` (an 
 
 <ParamField body="workspaceId" type="string" required />
 <ParamField body="targetUserId" type="string" required>The member being edited (path).</ParamField>
-<ParamField body="actingUserId" type="string" required>The acting user (body).</ParamField>
+<ParamField body="actingUserId" type="string" required>The acting user (body). Required by the **server** here, not just by the types: this route has no unbounded path, so omitting it is a `400 workspace/missing-user-id`. Every gate — both capability tiers, the rank guard, the assign rule, no-escalation — runs against this user. Act as the owner for an unrestricted edit.</ParamField>
 <ParamField body="capabilities" type="string[]" />
 <ParamField body="permissions" type="string[]" />
 <ParamField body="rank" type="number">Absolute. Mutually exclusive with `relativeRank`; omit both to leave rank unchanged.</ParamField>

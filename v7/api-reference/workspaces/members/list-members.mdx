@@ -8,6 +8,12 @@ Returns the roster as a **single unified array, one entry per distinct user**, e
 
 **Always returned in full — never paginated.** `include` flags only *add* entries; they never change the shape. `countOnly` is the numbers-only escape hatch.
 
+<Warning>
+  **There is no `page` or `limit` on this route, and sending them does nothing.** They are not rejected either — no error, no effect. A client that paginates receives the **entire** roster every time and mistakes it for page 1, so a naive "fetch until a short page" loop never terminates and a "page 2" request re-renders page 1's contents.
+
+  The response carries no `pagination` object precisely because there is none. If you need numbers rather than rows — a seat count, a badge — use [`countOnly=true`](#query-parameters), which returns per-reason counts and a distinct-user total **without ever materializing the roster array**. If you need a windowed UI, slice client-side after the single read.
+</Warning>
+
 ## Path Parameters
 
 <ParamField path="id" type="string" required>
@@ -25,7 +31,7 @@ Returns the roster as a **single unified array, one entry per distinct user**, e
 </ParamField>
 
 <ParamField query="actingUserId" type="string">
-  Service/master keys only — the user to act as. Enforced: roster visibility **and** the authority-field fence below both evaluate against the named user, so a key acting as a plain member receives the fenced view. Omit it to read as the app itself (unfenced). See [Acting on behalf of a user](/sdk/workspaces/overview#acting-on-behalf-of-a-user).
+  Service/master keys only — the user to act as. Enforced: roster visibility **and** the authority-field fence below both evaluate against the named user, so a key acting as a plain member receives the fenced view. Omit it to read as the app itself (unfenced) — where "omit" means **absent**: `actingUserId: ""` or `null` is a `400`, not a fall-through to that mode. See [Acting on behalf of a user](/sdk/workspaces/overview#acting-on-behalf-of-a-user) and [Shapes the server rejects](/sdk/workspaces/overview#shapes-the-server-rejects).
 </ParamField>
 
 ## Reasons
