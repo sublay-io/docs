@@ -6,7 +6,7 @@ icon: "plug"
 
 ## Overview
 
-`useFetchWorkspaceAuthority` returns a callable that resolves the signed-in user's standing on a workspace: `{ reasons, capabilities, permissions, rank }`. Use it to drive UI (show/hide buttons) — a permission check is a one-line `.includes()` on the result. Sublay never consumes your opaque `permissions`.
+`useFetchWorkspaceAuthority` returns a callable that resolves the signed-in user's standing on a workspace: `{ reasons, capabilities, permissions, rank, relativeRank }`. Use it to drive UI (show/hide buttons) — a permission check is a one-line `.includes()` on the result. Sublay never consumes your opaque `permissions`.
 
 <Note>
   **Not visibility-gated.** [`GET /workspaces/:id/authority/me`](/api-reference/workspaces/fetch-authority) requires a signed-in user and nothing more. It returns `404` only when the workspace does not exist — a signed-in user with no relation to an existing workspace gets `200` with `reasons: []` and empty `capabilities` / `permissions`, which is exactly the answer a UI gate wants. The trade-off is that the route confirms a workspace *exists* to any signed-in caller.
@@ -45,6 +45,7 @@ function InviteGate({ workspaceId }: { workspaceId: string }) {
 | `capabilities` | `string[]` | The resolved capability set (direct + reach + ownership). |
 | `permissions` | `string[]` | Per-node permissions (may be empty). |
 | `rank` | `number \| null` | Direct-membership rank, or `null`. |
+| `relativeRank` | `number \| null` | The same position as an offset from the caller — **degenerate here**, since this read is about *you*: always `0` when you hold a member row on this workspace and `null` when you do not. Returned so all three workspace reads carry both coordinates; read `rank` on this endpoint. |
 
 `WorkspaceAuthorityReasonDetail`:
 
@@ -57,7 +58,7 @@ function InviteGate({ workspaceId }: { workspaceId: string }) {
   **`view` is implied by every other capability.** Any user with standing resolves with `view` in `capabilities`, including a member whose stored `capabilities` array is empty. A user with no relation at all resolves to `reasons: []` and an empty capability set — so `capabilities.includes("view")` is a reliable "does this user have any standing here" check.
 </Note>
 
-Unlike the [member-standing read](/hooks/workspaces/use-fetch-workspace-member-standing), this hook is inherently a **self** read, so `capabilities` / `permissions` / `rank` are never fenced here.
+Unlike the [member-standing read](/hooks/workspaces/use-fetch-workspace-member-standing), this hook is inherently a **self** read, so `capabilities` / `permissions` / `rank` / `relativeRank` are never fenced here — the fence exists to stop a caller reconstructing *someone else's* rank, and there is nobody else in this payload.
 
 ## Related
 

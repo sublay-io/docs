@@ -35,19 +35,25 @@ Each entry's `reasons[]` contains `{ type, ...detail }` objects. A user present 
 | `type` | Detail | Counted as a seat? |
 |--------|--------|--------------------|
 | `owner` | — | **Yes** |
-| `member` | `rank`, `capabilities`, `permissions`, `title`, `metadata` | **Yes** |
+| `member` | `rank`, `relativeRank`, `capabilities`, `permissions`, `title`, `metadata` | **Yes** |
 | `ancestor-owner` | `viaWorkspaceId` | No (informational) |
 | `reach-holder` | `viaWorkspaceId`, `capabilities` | No (informational) |
-| `descendant-member` | `workspaceId`, `rank`, `capabilities` | Counted under the `descendants` include |
+| `descendant-member` | `workspaceId`, `rank`, `capabilities` — **no `relativeRank`** | Counted under the `descendants` include |
+
+<Note>
+  **`descendant-member` rows carry `rank` but never `relativeRank`.** Rank is **per-workspace**, so an offset measured against your standing on *this* node against a rank on *another* node would be arithmetic across two different ladders — a number that looks authoritative and is wrong. The field is uniformly absent on descendant rows rather than present only where a per-node anchor happens to have been resolved, so its presence never depends on who is asking. Their absolute `rank` is still there.
+</Note>
 
 <Warning>
-  **The authority-bearing detail fields are fenced.** `capabilities`, `permissions` and `rank` are **omitted from a reason** (absent — not `null`) on **other users'** entries unless the caller:
+  **The authority-bearing detail fields are fenced.** `capabilities`, `permissions`, `rank` and `relativeRank` are **omitted from a reason** (absent — not `null`) on **other users'** entries unless the caller:
 
   - holds one of the four people-operating capabilities on this workspace — `invite`, `remove-member`, `edit-member-access`, `edit-member-profile`; **or**
   - is the workspace's `owner` or an `ancestor-owner`; **or**
   - is a service/master key acting as **itself** (naming no `actingUserId`). A key that **does** name one is fenced exactly as that user is — see [Acting on behalf of a user](/sdk/workspaces/overview#acting-on-behalf-of-a-user).
 
-  The caller's **own** entry always carries them in full, so anyone can discover their own access. Who is on the roster — `user`, the reason `type`s, `title`, `metadata`, `viaWorkspaceId`, `workspaceId` — stays visible to any relation. Treat the three fields as optional in your types.
+  The caller's **own** entry always carries them in full, so anyone can discover their own access. Who is on the roster — `user`, the reason `type`s, `title`, `metadata`, `viaWorkspaceId`, `workspaceId` — stays visible to any relation. Treat the four fields as optional in your types.
+
+  `relativeRank` is fenced **with** `rank`, not beside it: it is `rank` minus the caller's own anchor, a number the caller already knows, so returning it to a fenced caller would reconstruct the fenced `rank` exactly.
 </Warning>
 
 ## Response (array mode)
@@ -58,7 +64,7 @@ Each entry's `reasons[]` contains `{ type, ...detail }` objects. A user present 
     {
       "user": { "id": "u_pat" },
       "reasons": [
-        { "type": "member", "rank": 5, "capabilities": ["view", "invite"], "permissions": [], "title": "Frontend Lead", "metadata": {} },
+        { "type": "member", "rank": 5, "relativeRank": 2, "capabilities": ["view", "invite"], "permissions": [], "title": "Frontend Lead", "metadata": {} },
         { "type": "ancestor-owner", "viaWorkspaceId": "ws_root" }
       ]
     }

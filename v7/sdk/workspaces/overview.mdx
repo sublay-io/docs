@@ -69,9 +69,9 @@ With a client token, every endpoint in the bundle resolves the actor from that t
 </Note>
 
 <Warning>
-  **Seeing the roster and seeing people's *authority* are two different tiers.** Any relation may read the roster and one member's standing — who is there, their `reasons`, `title` and `metadata`. But the authority-bearing fields — **`capabilities`, `permissions`, `rank`** — are **omitted** (absent, not `null`) unless the caller holds one of the four people-operating capabilities (`invite`, `remove-member`, `edit-member-access`, `edit-member-profile`) or is the `owner` / an `ancestor-owner`.
+  **Seeing the roster and seeing people's *authority* are two different tiers.** Any relation may read the roster and one member's standing — who is there, their `reasons`, `title` and `metadata`. But the authority-bearing fields — **`capabilities`, `permissions`, `rank`, `relativeRank`** — are **omitted** (absent, not `null`) unless the caller holds one of the four people-operating capabilities (`invite`, `remove-member`, `edit-member-access`, `edit-member-profile`) or is the `owner` / an `ancestor-owner`.
 
-  A caller **always** sees their own — their own roster row, their own standing, and the [authority read](/api-reference/workspaces/fetch-authority), which is inherently a self read and never fenced. So a plain member can always discover their own access; they just cannot enumerate everyone else's. A service/master key acting as **itself** is never fenced; one that **names** an `actingUserId` is fenced exactly as that user is — see [Acting on behalf of a user](#acting-on-behalf-of-a-user). Type the three fields as optional on client surfaces.
+  A caller **always** sees their own — their own roster row, their own standing, and the [authority read](/api-reference/workspaces/fetch-authority), which is inherently a self read and never fenced. So a plain member can always discover their own access; they just cannot enumerate everyone else's. A service/master key acting as **itself** is never fenced; one that **names** an `actingUserId` is fenced exactly as that user is — see [Acting on behalf of a user](#acting-on-behalf-of-a-user). Type all four fields as optional on client surfaces. (`relativeRank` is fenced *with* `rank` because it is `rank` minus a number the caller already knows — leaking it would leak `rank` exactly.)
 </Warning>
 
 <Note>
@@ -149,6 +149,63 @@ Rank is strict — you may only act on, and invite at, a rank **strictly below**
 
 This is not new behavior, but it is easy to hit for the first time when a backend stops running as an implicit owner. If your "add a manager" button is server-driven, act as the owner for it. The floor applies only to an inviter with a **direct member row** on the workspace, so it is skipped for an owner or ancestor owner, for a cross-node [reach](/data-models/workspace#reach-and-the-wall-door-rule) holder with no direct row, and for a key naming nobody.
 
+## Choosing a rank
+
+Almost every rule the ladder enforces is **relative** — act only on someone strictly below you, assign only strictly below yourself (minting rank 0 is the one absolute exception, below) — so rank can be named in either coordinate, on [Create Invite](/api-reference/workspaces/invitations/create-invite) and [Update Member](/api-reference/workspaces/members/update-member) alike:
+
+```tsx
+const createWorkspaceInvite = useCreateWorkspaceInvite();
+
+// Relative — "one rung below me". Usually what you mean.
+await createWorkspaceInvite({ workspaceId, email, relativeRank: 1 });
+
+// Absolute — a specific position on the ladder.
+await createWorkspaceInvite({ workspaceId, email, rank: 10 });
+```
+
+The same two fields exist on the `@sublay/js` and `@sublay/node` equivalents — this is a server-side rule, not a hook convenience.
+
+The two are **mutually exclusive**: sending both is a `400`. Storage stays absolute — a relative offset is resolved to a number at write time and the member row holds that number.
+
+Reads return **both**. The roster, member-standing and authority reads each carry `rank` (absolute) alongside `relativeRank` (that member's position as an offset from *you*, where `-3` means "three rungs above you"). So there is no "write 2, read 5" asymmetry to reconcile — you can read back in the same coordinate you wrote in.
+
+<Info>
+  **`relativeRank: 1` is the happy path, and the invite default.** Omit *both* rank fields on an invite and the server applies `relativeRank: 1` — one rung below the inviter. That is well defined for every actor (an inviter with no member row here anchors at apex, so their default lands on rank 0) and, by construction, it can never fail the rank floor. There is no equivalent default on [Update Member](/api-reference/workspaces/members/update-member): omitting both there means **rank unchanged**, so editing someone's capabilities never quietly moves them on the ladder.
+</Info>
+
+### The anchor is your member row, not your job title
+
+An offset is measured from **your own rank on this workspace if you hold a member row here**, and from **apex** (one step above rank 0) if you do not.
+
+Owners, ancestor owners, reach holders and keys acting as themselves normally have no row on the node in question, so they normally anchor at apex — but that is a coincidence of the common case, not the rule. An ancestor owner who *also* sits in this node's roster measures from that row: Alice owns `root` and is rank 3 on `child`, so on `child` her `relativeRank: 1` resolves to rank **4**, and she reads `child`'s rank-0 member back as `-3`. See [rank semantics](/data-models/workspace-member#the-anchor-your-member-row-not-what-kind-of-actor-you-are).
+
+One consequence worth knowing: because an in-ladder anchor is `>= 0` and a write offset is `>= 1`, **a direct member can never mint rank 0 through the relative form** — the arithmetic simply cannot reach it. The absolute form is a different matter and *is* guarded: a direct-member actor who names `rank: 0` outright is refused with `403 workspace/insufficient-rank` ("Only the owner may assign rank 0"). So rank 0 is reachable only by naming it absolutely as the owner, or by an actor with **no member row on this workspace** — an owner, ancestor owner, [reach](/data-models/workspace#reach-and-the-wall-door-rule) holder or key naming nobody — who anchors at apex and lands on 0 from `relativeRank: 1`.
+
+<Warning>
+  **A relative offset is a snapshot, not a live link.** It is resolved once, at write time, and frozen as an absolute number. Invite at `relativeRank: 1` while you are rank 1 and they land on rank 2 — get promoted to rank 0 later and they are still 2, now two rungs below you rather than one. Nothing re-derives.
+
+  (`relativeRank` on a **read** is the opposite: recomputed per request against whoever is asking, so the same member shows a different `relativeRank` to different callers. Only `rank` is caller-independent.)
+</Warning>
+
+<Warning>
+  **Leaning on the invite default puts everyone on the same rung.** A lead at rank 0 who invites six people with no rank field gets six rank-1 members — and equals cannot act on equals, so none of those six can manage each other. Only the lead can manage any of them.
+
+  That is often exactly right for a flat team, and it is the reason the default is safe rather than clever. But if your product has tiers, say so on the invite instead of discovering the flat layer later.
+</Warning>
+
+### When you want absolute instead
+
+`rank` is the escape hatch, and it is the right call whenever the number means something in your product rather than something about the caller. It buys more freedom and costs more care: naming a rank you are not entitled to grant is a `403 workspace/insufficient-rank`, and so is naming `rank: 0` as anything other than the owner. A relative offset clears the **rank floor** by construction — but that is the floor specifically, not a blanket exemption from the rank checks.
+
+One pattern some apps like — **not** the prescribed approach, just one that works — is a set of named tier constants with gaps left for later:
+
+```tsx
+const TIER = { ADMIN: 0, MANAGER: 10, STAFF: 20 } as const;
+
+await createWorkspaceInvite({ workspaceId, email, rank: TIER.MANAGER });
+```
+
+Apps built this way will naturally prefer absolute input — they already know the number they want, and computing `TIER.MANAGER - myRank` just to send it relatively would be a detour. That is precisely why absolute stays. Apps whose hierarchy is a real chain of command, where "under me" is the actual intent, are better served by `relativeRank`. Neither is deprecated.
 
 ## Quick start
 
@@ -221,5 +278,5 @@ function CreateTeam() {
 | [`useFetchWorkspaceAuthority`](/hooks/workspaces/use-fetch-workspace-authority) | Resolve the current user's standing | Self-service |
 
 <Tip>
-  Drive your UI off [`useFetchWorkspaceAuthority`](/hooks/workspaces/use-fetch-workspace-authority) rather than guessing: it returns `{ reasons, capabilities, permissions, rank }`, so showing the "Remove member" button is `authority.capabilities.includes("remove-member")`. `reasons` are structured `{ type, viaWorkspaceId? }` entries — the same shape a roster entry carries — so you can also show *which* ancestor grants an inherited standing. And because **`view` is implied by every other capability**, `capabilities.includes("view")` doubles as "does this user have any standing here at all".
+  Drive your UI off [`useFetchWorkspaceAuthority`](/hooks/workspaces/use-fetch-workspace-authority) rather than guessing: it returns `{ reasons, capabilities, permissions, rank, relativeRank }`, so showing the "Remove member" button is `authority.capabilities.includes("remove-member")`. `reasons` are structured `{ type, viaWorkspaceId? }` entries — the same shape a roster entry carries — so you can also show *which* ancestor grants an inherited standing. And because **`view` is implied by every other capability**, `capabilities.includes("view")` doubles as "does this user have any standing here at all".
 </Tip>
