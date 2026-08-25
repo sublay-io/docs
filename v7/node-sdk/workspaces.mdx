@@ -77,12 +77,13 @@ The `workspaces` module is the developer's **authorization-server SDK** for the 
   mode, so `actingUserId: user?.id ?? ""` fails loudly rather than quietly
   acquiring full authority. And when a key names **nobody**, a `400` also
   follows any **undeclared** top-level field that looks like a misdirected
-  actor — a name containing `user` or `acting`, or a UUID value under any name.
+  actor — a name containing `user` or `acting`.
   Fields the API declares are exempt from that judgement, so `newOwnerId`,
   `username` and `parentWorkspaceId` all travel normally. A key that *did* name
   someone stays permissive. A `userId` anywhere in a body or query is refused
-  for every caller (the invitee on `createWorkspaceInvite` is the sole
-  exception), and a non-UUID id in a path is a `400 workspace/invalid-params`
+  for every caller — the sole exception is the invitee in
+  `createWorkspaceInvite`'s **body**, and even there a query `?userId=` is
+  refused like everywhere else. A non-UUID id in a path is a `400 workspace/invalid-params`
   rather than a `500`. Full list with the reasoning:
   [Shapes the server rejects](/sdk/workspaces/overview#shapes-the-server-rejects).
 
@@ -147,7 +148,7 @@ const { data, pagination } = await sublay.workspaces.fetchManyWorkspaces({
 <ParamField body="actingUserId" type="string" required>The user whose workspaces to list.</ParamField>
 <ParamField body="page" type="number" />
 <ParamField body="limit" type="number" />
-<ParamField body="include" type="string" />
+<ParamField body="include" type="string">Accepted and currently ignored — this listing has no include flags. `memberCount` works on `fetchWorkspace` only.</ParamField>
 
 ### updateWorkspace
 
@@ -211,7 +212,7 @@ const workspace = await sublay.workspaces.transferWorkspaceOwnership({
 <ParamField body="workspaceId" type="string" required />
 <ParamField body="actingUserId" type="string" required>The user to act as — must own this workspace or an ancestor. Required by this SDK's types; the [REST endpoint](/api-reference/workspaces/transfer-ownership) also accepts it omitted (runs unbounded).</ParamField>
 <ParamField body="newOwnerId" type="string" required>The new owner (any verified user).</ParamField>
-<ParamField body="previousOwnerDisposition" type="string">`"demote"` or `"remove"`.</ParamField>
+<ParamField body="previousOwnerDisposition" type="string">`"demote"` or `"remove"`. Defaults to `"remove"` when omitted.</ParamField>
 <ParamField body="previousOwnerRank" type="number">On demote, the ex-owner's rank (absolute only). Defaults to **one rung below the acting user's anchor** — `0` when the actor is apex (an owner or ancestor owner with no member row here, which is the usual case), or one below their own row when the named `actingUserId` sits in this workspace's ladder. (A key naming nobody also anchors at apex, but this SDK requires `actingUserId` here, so that shape is only reachable over REST.)</ParamField>
 <ParamField body="previousOwnerCapabilities" type="string[]" />
 

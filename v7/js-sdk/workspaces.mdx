@@ -58,7 +58,7 @@ const { data, pagination } = await sublay.workspaces.fetchManyWorkspaces({ page:
 
 <ParamField body="page" type="number" />
 <ParamField body="limit" type="number" />
-<ParamField body="include" type="string" />
+<ParamField body="include" type="string">Accepted and currently ignored — this listing has no include flags. `memberCount` works on `fetchWorkspace` only.</ParamField>
 
 ### updateWorkspace
 
@@ -114,7 +114,7 @@ const workspace = await sublay.workspaces.transferWorkspaceOwnership({
 
 <ParamField body="workspaceId" type="string" required />
 <ParamField body="newOwnerId" type="string" required>The new owner (any verified user).</ParamField>
-<ParamField body="previousOwnerDisposition" type="string">`"demote"` or `"remove"`.</ParamField>
+<ParamField body="previousOwnerDisposition" type="string">`"demote"` or `"remove"`. Defaults to `"remove"` when omitted.</ParamField>
 <ParamField body="previousOwnerRank" type="number">On demote, the ex-owner's rank (absolute only). Defaults to **one rung below the acting user's anchor** — `0` for the usual apex actor, or one below their own row if they sit in this workspace's ladder.</ParamField>
 <ParamField body="previousOwnerCapabilities" type="string[]" />
 

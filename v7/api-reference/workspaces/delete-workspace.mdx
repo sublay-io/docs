@@ -29,7 +29,7 @@ Deletion **cascades** the entire subtree in one transaction, bottom-up: invitati
 
   The [node SDK](/node-sdk/workspaces) is stricter than this endpoint: it types `actingUserId` as **required** here, so omitting it is only possible by calling the REST route directly.
 
-  Three shapes are refused rather than ignored on this path. `actingUserId: ""` or `null` is a `400` — it reads as an *attempt* to name someone, not as "nobody". And when the request names nobody, so is any **undeclared** top-level body or query field that looks like a misdirected actor (a name containing `user` or `acting`, or a UUID value under any name), and any body whose `Content-Type` is not `application/json` — an unparsed body discards the `actingUserId` inside it just as surely as a misspelling would. Fields this endpoint declares are never judged that way, whatever they are named or carry. See [Shapes the server rejects](/sdk/workspaces/overview#shapes-the-server-rejects).
+  Three shapes are refused rather than ignored on this path. `actingUserId: ""` or `null` is a `400` — it reads as an *attempt* to name someone, not as "nobody". And when the request names nobody, so is any **undeclared** top-level body or query field that looks like a misdirected actor (a name containing `user` or `acting`), and any body whose `Content-Type` is not `application/json` — an unparsed body discards the `actingUserId` inside it just as surely as a misspelling would. Fields this endpoint declares are never judged that way, whatever they are named or carry. See [Shapes the server rejects](/sdk/workspaces/overview#shapes-the-server-rejects).
 </ParamField>
 
 ## Response
@@ -43,7 +43,7 @@ Deletion **cascades** the entire subtree in one transaction, bottom-up: invitati
 <AccordionGroup>
   <Accordion title="Unauthorized — 403">
     ```json
-    { "error": "Only the owner or an ancestor owner may delete a workspace.", "code": "workspace/unauthorized" }
+    { "error": "Owner access required", "code": "workspace/unauthorized" }
     ```
   </Accordion>
   <Accordion title="Invalid Path Parameter — 400">
@@ -55,7 +55,7 @@ Deletion **cascades** the entire subtree in one transaction, bottom-up: invitati
   <Accordion title="Unparsed Body — 400">
     ```json
     {
-      "error": "This request carries a body with content-type \"text/plain;charset=UTF-8\", which no parser reads, so any `actingUserId` inside it was discarded — the request would run with full authority as the app itself. Send the body as application/json.",
+      "error": "This request carries a body with content-type \"text/plain;charset=UTF-8\", which no parser reads, so any `actingUserId` inside it was discarded and this request names no acting user. Send the body as application/json.",
       "code": "workspace/invalid-body"
     }
     ```

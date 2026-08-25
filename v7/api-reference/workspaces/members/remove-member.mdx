@@ -42,7 +42,7 @@ Removes a member from a workspace. Requires the `remove-member` capability and i
   </Accordion>
   <Accordion title="Sole Owner — 409">
     ```json
-    { "error": "The sole owner must transfer ownership before being removed.", "code": "workspace/sole-owner" }
+    { "error": "The workspace owner cannot be removed. Transfer ownership first.", "code": "workspace/sole-owner" }
     ```
   </Accordion>
   <Accordion title="Missing Acting User — 400">

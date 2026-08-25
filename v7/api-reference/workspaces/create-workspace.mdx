@@ -48,7 +48,7 @@ Returns the created [Workspace](/data-models/workspace) object.
   </Accordion>
   <Accordion title="Unauthorized — 403">
     ```json
-    { "error": "You do not have the create-sub-workspace capability on the parent.", "code": "workspace/unauthorized" }
+    { "error": "The 'create-sub-workspace' capability on the parent is required.", "code": "workspace/unauthorized" }
     ```
   </Accordion>
   <Accordion title="Parent Not Found — 404">

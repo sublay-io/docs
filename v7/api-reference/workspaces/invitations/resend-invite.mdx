@@ -64,7 +64,7 @@ Returns the refreshed [WorkspaceInvitation](/data-models/workspace-invitation) o
   <Accordion title="Unparsed Body — 400">
     ```json
     {
-      "error": "This request carries a body with content-type \"text/plain;charset=UTF-8\", which no parser reads, so any `actingUserId` inside it was discarded — the request would run with full authority as the app itself. Send the body as application/json.",
+      "error": "This request carries a body with content-type \"text/plain;charset=UTF-8\", which no parser reads, so any `actingUserId` inside it was discarded and this request names no acting user. Send the body as application/json.",
       "code": "workspace/invalid-body"
     }
     ```

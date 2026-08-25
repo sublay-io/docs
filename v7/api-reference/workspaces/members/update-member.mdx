@@ -71,8 +71,16 @@ Returns the updated [WorkspaceMember](/data-models/workspace-member) object.
 
 <AccordionGroup>
   <Accordion title="Unauthorized — 403">
+    One message per tier, depending on which fields the request touched. Powerful fields (`capabilities`, `permissions`, `rank`, `relativeRank`):
+
     ```json
-    { "error": "You do not have the required capability.", "code": "workspace/unauthorized" }
+    { "error": "The 'edit-member-access' capability is required to edit access fields.", "code": "workspace/unauthorized" }
+    ```
+
+    Cosmetic fields (`title`, `metadata`) — not raised when a member is editing only their own row:
+
+    ```json
+    { "error": "The 'edit-member-profile' capability is required to edit profile fields.", "code": "workspace/unauthorized" }
     ```
   </Accordion>
   <Accordion title="Insufficient Rank — 403">
@@ -96,13 +104,24 @@ Returns the updated [WorkspaceMember](/data-models/workspace-member) object.
   </Accordion>
   <Accordion title="Both rank coordinates supplied — 400">
     ```json
-    { "error": "Provide either rank (absolute) or relativeRank (offset from you), not both" }
+    { "error": "relativeRank: Provide either rank (absolute) or relativeRank (offset from you), not both", "code": "workspace/invalid-body" }
     ```
+    A schema rejection, so the message is prefixed with the field it was reported against.
   </Accordion>
   <Accordion title="No Escalation — 403">
+    The offending values are named. Capabilities:
+
     ```json
-    { "error": "You may only grant capabilities/permissions you hold on the target node.", "code": "workspace/no-escalation" }
+    { "error": "Cannot grant capabilities you do not hold on this workspace: edit-member-access.", "code": "workspace/no-escalation" }
     ```
+
+    …and permissions:
+
+    ```json
+    { "error": "Cannot grant permissions you do not hold on this workspace: deploy.", "code": "workspace/no-escalation" }
+    ```
+
+    Only **added** values are checked — removing a capability or permission is governed by rank alone.
   </Accordion>
   <Accordion title="Missing Acting User — 400">
     ```json

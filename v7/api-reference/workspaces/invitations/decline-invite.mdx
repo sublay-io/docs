@@ -48,6 +48,12 @@ Marks the invite `declined` and fires `workspace.invite.declined`.
     { "error": "This invitation is no longer pending.", "code": "workspace/invite-terminal" }
     ```
   </Accordion>
+  <Accordion title="Acting User Not Found — 404">
+    ```json
+    { "error": "Acting user not found.", "code": "workspace/invalid-target" }
+    ```
+    The `actingUserId` a key named does not exist in this project. Naming is not authentication — the id is only looked up here.
+  </Accordion>
   <Accordion title="Missing Acting User — 400">
     ```json
     { "error": "Missing user ID", "code": "workspace/missing-user-id" }

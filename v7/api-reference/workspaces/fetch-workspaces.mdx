@@ -21,7 +21,7 @@ Returns a paginated list of workspaces scoped to the caller's **direct membershi
 </ParamField>
 
 <ParamField query="include" type="string">
-  Comma-separated include flags. `memberCount` adds each workspace's direct member count.
+  Accepted and currently **ignored** — this listing has no include flags. `memberCount` is a single-workspace flag only, on [Fetch Workspace](/api-reference/workspaces/fetch-workspace); sending it here is neither an error nor an effect, and every row comes back without a `memberCount`.
 </ParamField>
 
 <ParamField query="actingUserId" type="string" required>

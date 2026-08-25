@@ -140,7 +140,7 @@ The unbounded path survives on the rest — the guard-only routes (`updateWorksp
 
 ### Shapes the server rejects
 
-Five request shapes are refused outright rather than ignored, all of them `400`s. Four carry `workspace/invalid-body` or `workspace/invalid-query` depending on where the offending field sat; the fifth is a malformed path parameter.
+Six request shapes are refused outright rather than ignored, all of them `400`s. Five carry `workspace/invalid-body` or `workspace/invalid-query` depending on where the offending field sat; the sixth is a malformed path parameter, which carries `workspace/invalid-params`.
 
 All of them are checked in **one place**, mounted ahead of every route on the bundle, so they behave identically no matter which endpoint you call and no matter what a route's own schema declares.
 
@@ -155,7 +155,7 @@ All of them are checked in **one place**, mounted ahead of every route on the bu
 
     On a workspace route `userId` **never** names the caller — it addresses the request *target*. The rejection is unconditional: it fires for user tokens and keys alike, on every route, and even when a correct `actingUserId` is also present, because a request carrying both is malformed regardless. It is checked on the raw request, ahead of any route's own schema, so a route that does not declare `userId` rejects it rather than quietly dropping it.
 
-    **One exception:** the invitee `userId` on [Create Invite](/api-reference/workspaces/invitations/create-invite), where the field has always meant the target. The path parameter `:userId` (on the member routes) is untouched — that is the target too.
+    **One exception:** the invitee `userId` in the **body** of [Create Invite](/api-reference/workspaces/invitations/create-invite), where the field has always meant the target. The carve-out covers that body field and nothing else — a query `?userId=` is refused on Create Invite exactly as it is everywhere else, because no workspace route reads one, so there it can only be the stale actor spelling. The path parameter `:userId` (on the member routes) is untouched — that is the target too.
   </Accordion>
 
   <Accordion title="An empty or null `actingUserId` — 400">
@@ -189,13 +189,11 @@ All of them are checked in **one place**, mounted ahead of every route on the bu
 
     When a service/master key names **no** acting user, every other top-level field in the body and query string is put through three steps, in order. The first one that applies decides it:
 
-    1. **Is it the invitee `userId` on [Create Invite](/api-reference/workspaces/invitations/create-invite)?** Then it passes — the bundle's one carve-out.
-    2. **Does the API declare it?** Then it passes, unconditionally, whatever it is named and whatever it carries. `newOwnerId` on [Transfer Ownership](/api-reference/workspaces/transfer-ownership) is a UUID by definition; `username` on Create Invite has `user` in its name. Both are real fields, so neither is a misdirected actor, and neither reaches step 3.
-    3. **Otherwise, does it look like an attempt to name an actor?** Two signals, either sufficient:
-       - **Its name.** Lowercased with every non-alphanumeric character stripped, it contains `user` or `acting`. That covers `acting_user_id`, `actingUseId`, `ACTING-USER-ID`, `actingUserId ` with a trailing space — every rendering of the field name, including ones nobody enumerated.
-       - **Its value.** It is a UUID, or an array containing one, under any key name at all. `ref`, `ownerRef`, `x` — a key that gives nothing away can still be carrying the only kind of value that could name an actor.
+    1. **Is it the invitee `userId` in the body of [Create Invite](/api-reference/workspaces/invitations/create-invite)?** Then it passes — the bundle's one carve-out, and it applies to the body only.
+    2. **Does the API declare it?** Then it passes, unconditionally, whatever it is named and whatever it carries. `username` on Create Invite has `user` in its name and `newOwnerId` on [Transfer Ownership](/api-reference/workspaces/transfer-ownership) carries a UUID; both are real fields, so neither is a misdirected actor, and neither reaches step 3.
+    3. **Otherwise, does its *name* look like an attempt to name an actor?** One signal: lowercased with every non-alphanumeric character stripped, the key contains `user` or `acting`. That covers `acting_user_id`, `actingUseId`, `ACTING-USER-ID`, `actingUserId ` with a trailing space — every rendering of the field name, including ones nobody enumerated. If it does, the request is refused; otherwise the field passes.
 
-       Either signal refuses the request. Neither firing means the field passes.
+       The field's **value** is not a signal. A key whose name gives nothing away passes even when it holds a UUID, so `?requestId=<uuid>`, `?x-correlation-id=<uuid>` and `?cb=<uuid>` go through untouched.
 
     <Note>
       **"Declared" is derived from the schemas, not a list somebody maintains.** The set is read out of the workspaces request schemas themselves, so a field is recognized the moment it is added to one — there is nothing to remember and nothing to go stale. That distinction is load-bearing: this check was a hand-written list once, and the fields it forgot are exactly what turned documented operations into `400`s.
@@ -205,7 +203,7 @@ All of them are checked in **one place**, mounted ahead of every route on the bu
   <Accordion title="A body no parser read, when the request names nobody — 400">
     ```json
     {
-      "error": "This request carries a body with content-type \"text/plain;charset=UTF-8\", which no parser reads, so any `actingUserId` inside it was discarded — the request would run with full authority as the app itself. Send the body as application/json.",
+      "error": "This request carries a body with content-type \"text/plain;charset=UTF-8\", which no parser reads, so any `actingUserId` inside it was discarded and this request names no acting user. Send the body as application/json.",
       "code": "workspace/invalid-body"
     }
     ```
@@ -239,13 +237,13 @@ All of them are checked in **one place**, mounted ahead of every route on the bu
 <Note>
   **The check asks "could this have been the actor?", not "is this field valid here".** Both halves of that matter, and each one cost a round of breakage to learn.
 
-  **Why step 2 exists.** An earlier version ran the step-3 heuristic on *every* field, real ones included — and real fields trip it constantly. `newOwnerId` is a UUID, so the unbounded [Transfer Ownership](/api-reference/workspaces/transfer-ownership) path stopped working entirely; `username` contains `user`, so inviting by username `400`ed while inviting by email or `userId` succeeded, three spellings of one operation disagreeing. Declared fields now short-circuit ahead of the heuristic, which is why those work again.
+  **Why step 2 exists.** The step-3 heuristic judges names, and real field names trip it: `username` on [Create Invite](/api-reference/workspaces/invitations/create-invite) contains `user`. Without the declared-field short-circuit, inviting by username would `400` while inviting by email or `userId` succeeded — three spellings of one operation disagreeing. Declared fields are settled at step 2, so a real field is never judged by the shape of its name.
 
-  **Why step 3 is narrow.** An even earlier version inverted it: anything *not* declared was refused outright. That swept in fields with nothing to do with actors — `?_=1699000000` is jQuery's and most CDNs' default cache-buster, with `_t` and `cb` close behind. A proxy, gateway or tracing sidecar appending one would have `400`ed every unbounded workspaces call in production and blamed the developer for a parameter they never wrote. Those pass now, as does `traceparent`: no `user`/`acting` in the name, no UUID in the value.
+  **Why step 3 reads the name and not the value.** Correlation and request ids are overwhelmingly UUIDs, and gateways, proxies and tracing sidecars propagate them into the query string. Judging values would `400` every unbounded workspaces call behind such a proxy over a parameter the developer never wrote. So `?requestId=`, `?x-correlation-id=`, `?correlationId=`, `?traceId=` and `?cb=` pass whatever they carry, as do `traceparent` and the `?_=1699000000` cache-buster. A field with no actor-ish word in its name that merely happens to hold a UUID is not a misspelled `actingUserId`.
 
-  **The honest tradeoff at step 3:** a stray, undeclared field whose name contains neither `user` nor `acting` *and* whose value is not a UUID now reaches the server and is ignored. That is intentional. Such a field cannot name an actor, which is the only thing this check exists to catch — validating each route's own shape is the schema's job, not this one's.
+  **The honest tradeoff at step 3:** a stray, undeclared field whose name contains neither `user` nor `acting` reaches the server and is ignored, whatever it carries. That is intentional — a name that gives nothing away cannot be a rendering of `actingUserId`, which is the only thing this check exists to catch. Validating each route's own shape is the schema's job, not this one's.
 
-  Note the direction of the residual risk: the two signals are broad (any rendering of the name, any UUID-valued key), the carve-out is one field. A field you invent that happens to carry a UUID **will** be refused on the unbounded path. Name an `actingUserId` and none of this applies.
+  The same boundary applies to a name you invent for the purpose (`onBehalfOf`, `impersonate`) and to a nested one (`{ data: { actingUserId } }`, `?ctx[actingUserId]=`, an array-wrapped body): the check reads top-level keys, so those name nobody and the request runs as the app. What makes that safe is not the heuristic but the gate itself — no request can reach the unbounded path without clearing it. Spell `actingUserId` at the top level and none of this applies.
 </Note>
 
 <Note>
@@ -254,7 +252,7 @@ All of them are checked in **one place**, mounted ahead of every route on the bu
   - `workspace/invalid-body` / `workspace/invalid-query` — **the gate**, above. The request carries something that could have been a misdirected actor, so it is refused rather than run as the app. Checked **first**, on every route.
   - `workspace/missing-user-id` — **the route's own rule.** On the ten routes whose actor is [required](#acting-on-behalf-of-a-user) a key must name someone, and there is no unbounded path to fall back on. Nothing about the request's shape is wrong; it is simply an operation that has to belong to a person.
 
-  Order matters because the gate runs ahead of the route. On `POST /workspaces` a key with no `actingUserId` and a clean request gets `workspace/missing-user-id` — but the same call with a `text/plain` body, or carrying an undeclared UUID-valued field, gets the gate's `workspace/invalid-body` instead. Fix what the message names; the missing-actor error appears once the request is otherwise well formed.
+  Order matters because the gate runs ahead of the route. On `POST /workspaces` a key with no `actingUserId` and a clean request gets `workspace/missing-user-id` — but the same call with a `text/plain` body, or carrying an undeclared field whose name contains `user` or `acting`, gets the gate's `workspace/invalid-body` instead. Fix what the message names; the missing-actor error appears once the request is otherwise well formed.
 
   Read the code, not the status: both are `400`, and only the code tells you whether to add an actor or repair the request.
 </Note>
