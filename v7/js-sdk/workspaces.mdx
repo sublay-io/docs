@@ -17,6 +17,24 @@ Every call is authorized against the **signed-in user's own standing** on the wo
   A `userId` that names a **target** is fully available on the client — the invitee `userId` on `createWorkspaceInvite`, and the `targetUserId` path param on the member functions. Only the *actor* field, `actingUserId`, is node-SDK-only.
 </Tip>
 
+<Warning>
+  **Pass only the documented fields — the props object is sent whole.**
+  `createWorkspace` and its siblings hand your object straight to the request body, and every workspaces endpoint refuses a top-level field it does not declare: `{ "error": "Unrecognized key: \"slug\"", "code": "workspace/invalid-body" }` (plural `Unrecognized keys: "a", "b"` for two or more, `workspace/invalid-query` for a query-string offender).
+
+  ```typescript
+  // ❌ 400 — `slug` and `plan` are not fields of this endpoint.
+  await sublay.workspaces.createWorkspace({ ...orgTemplate });
+
+  // ✅ Name the fields; your own data belongs in `metadata`.
+  await sublay.workspaces.createWorkspace({
+    name: orgTemplate.name,
+    metadata: { slug: orgTemplate.slug, plan: orgTemplate.plan },
+  });
+  ```
+
+  Strictness governs **top-level** keys only, so nothing inside `metadata` is inspected. See [Shapes the server rejects](/sdk/workspaces/overview#shapes-the-server-rejects).
+</Warning>
+
 ---
 
 ## Workspace lifecycle
@@ -46,19 +64,23 @@ const workspace = await sublay.workspaces.fetchWorkspace({
 ```
 
 <ParamField body="workspaceId" type="string" required />
-<ParamField body="include" type="string">`memberCount` adds the direct member count.</ParamField>
+<ParamField body="include" type="string">Comma-separated include flags. `memberCount` adds the workspace's direct member count; omit it and the field is absent. An unrecognized flag value is ignored.</ParamField>
 
 ### fetchManyWorkspaces
 
 Lists the bearer-token user's direct-membership + owned workspaces (paginated). Self-service.
 
 ```typescript
-const { data, pagination } = await sublay.workspaces.fetchManyWorkspaces({ page: 1, limit: 20 });
+const { data, pagination } = await sublay.workspaces.fetchManyWorkspaces({
+  page: 1,
+  limit: 20,
+  include: "memberCount", // each row gains a `memberCount`
+});
 ```
 
 <ParamField body="page" type="number" />
 <ParamField body="limit" type="number" />
-<ParamField body="include" type="string">Accepted and currently ignored — this listing has no include flags. `memberCount` works on `fetchWorkspace` only.</ParamField>
+<ParamField body="include" type="string">Comma-separated include flags, sent as a query param. `memberCount` adds a `memberCount` to **every row** — the workspace's direct member count, resolved in one grouped query over the returned page rather than one request per row. Omit it and the field is absent from each row.</ParamField>
 
 ### updateWorkspace
 

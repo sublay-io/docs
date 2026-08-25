@@ -72,25 +72,52 @@ The `workspaces` module is the developer's **authorization-server SDK** for the 
 </Note>
 
 <Warning>
-  **Absent, not falsy — and nothing actor-shaped on the unbounded path.**
+  **Absent, not falsy — and undeclared fields are refused, not ignored.**
   `actingUserId: ""` or `null` is a `400`, not a fall-through to the app-itself
   mode, so `actingUserId: user?.id ?? ""` fails loudly rather than quietly
-  acquiring full authority. And when a key names **nobody**, a `400` also
-  follows any **undeclared** top-level field that looks like a misdirected
-  actor — a name containing `user` or `acting`.
-  Fields the API declares are exempt from that judgement, so `newOwnerId`,
-  `username` and `parentWorkspaceId` all travel normally. A key that *did* name
-  someone stays permissive. A `userId` anywhere in a body or query is refused
-  for every caller — the sole exception is the invitee in
-  `createWorkspaceInvite`'s **body**, and even there a query `?userId=` is
-  refused like everywhere else. A non-UUID id in a path is a `400 workspace/invalid-params`
-  rather than a `500`. Full list with the reasoning:
-  [Shapes the server rejects](/sdk/workspaces/overview#shapes-the-server-rejects).
+  acquiring full authority.
+
+  Every workspaces endpoint also declares its fields exactly, and refuses any
+  top-level field it does not declare — in the body and in the query string
+  alike, for every caller — with
+  `{ "error": "Unrecognized key: \"onBehalfOf\"", "code": "workspace/invalid-body" }`
+  (plural `Unrecognized keys: "a", "b"` for two or more, and
+  `workspace/invalid-query` when the offender was in the query string). So
+  `onBehalfOf`, `impersonate` and `acting_user_id` all fail at the wire rather
+  than being dropped on the way to an unbounded call. A `userId` anywhere in a
+  body or query is refused with a message of its own — the sole exception is the
+  invitee in `createWorkspaceInvite`'s **body**, and even there a query
+  `?userId=` is refused like everywhere else. A non-UUID id in a path is a
+  `400 workspace/invalid-params` rather than a `500`. Full list with the
+  reasoning: [Shapes the server rejects](/sdk/workspaces/overview#shapes-the-server-rejects).
 
   One of those rules cannot bite you through this SDK: a body whose content-type
   no parser reads is refused on the unbounded path, and this SDK serializes every
   body it sends as `application/json`. It is a hazard for hand-rolled `fetch()`
   calls, not for `sublay.workspaces.*`.
+</Warning>
+
+<Warning>
+  **Pass only the documented fields — the props object is sent whole.**
+  `createWorkspace` and its siblings hand your object straight to the request
+  body, so a convenience spread carries whatever else it holds into the request,
+  and the endpoint refuses it:
+
+  ```typescript
+  // ❌ 400 — `slug` and `plan` are not fields of this endpoint.
+  await sublay.workspaces.createWorkspace({ ...orgTemplate, actingUserId });
+
+  // ✅ Name the fields.
+  await sublay.workspaces.createWorkspace({
+    actingUserId,
+    name: orgTemplate.name,
+    metadata: { slug: orgTemplate.slug, plan: orgTemplate.plan },
+  });
+  ```
+
+  Your own data belongs in `metadata`, which is opaque to Sublay and accepts any
+  JSON. Strictness governs **top-level** keys only, so nothing inside `metadata`
+  is inspected.
 </Warning>
 
 Read the concepts first: [capabilities vs permissions](/data-models/workspace-member#the-two-arrays-capabilities-vs-permissions), [rank](/data-models/workspace-member#rank-semantics), [reach & ownership](/data-models/workspace#reach-and-the-wall-door-rule), and the [identity-matched, no-token invite model](/data-models/workspace-invitation#acceptance-model).
@@ -130,7 +157,7 @@ const workspace = await sublay.workspaces.fetchWorkspace({
 ```
 
 <ParamField body="workspaceId" type="string" required>The workspace UUID.</ParamField>
-<ParamField body="include" type="string">Comma-separated include flags; `memberCount` adds the direct member count.</ParamField>
+<ParamField body="include" type="string">Comma-separated include flags, sent as a query param. `memberCount` adds the workspace's direct member count; omit it and the field is absent. An unrecognized flag value is ignored.</ParamField>
 <ParamField body="actingUserId" type="string">Optional — the user to act as. Sent as a query param. Visibility resolves against them, so a key acting as someone with no relation to this workspace gets that user's `404`. Omit to read as the app itself.</ParamField>
 
 ### fetchManyWorkspaces
@@ -142,13 +169,14 @@ const { data, pagination } = await sublay.workspaces.fetchManyWorkspaces({
   actingUserId: "usr_owner",
   page: 1,
   limit: 20,
+  include: "memberCount", // each row gains a `memberCount`
 });
 ```
 
 <ParamField body="actingUserId" type="string" required>The user whose workspaces to list.</ParamField>
 <ParamField body="page" type="number" />
 <ParamField body="limit" type="number" />
-<ParamField body="include" type="string">Accepted and currently ignored — this listing has no include flags. `memberCount` works on `fetchWorkspace` only.</ParamField>
+<ParamField body="include" type="string">Comma-separated include flags, sent as a query param. `memberCount` adds a `memberCount` to **every row** — the workspace's direct member count, resolved in one grouped query over the returned page rather than one request per row. Omit it and the field is absent from each row.</ParamField>
 
 ### updateWorkspace
 
