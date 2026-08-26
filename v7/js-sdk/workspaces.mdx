@@ -360,7 +360,7 @@ await sublay.workspaces.declineWorkspaceInvite({ inviteId: "inv_1" });
 
 ### fetchWorkspaceAuthority
 
-The bearer-token user's resolved standing on a workspace — `{ reasons, capabilities, permissions, rank, relativeRank }`. **Self-service**, so nothing is fenced here. (`relativeRank` is degenerate on this read — an offset from you to yourself: `0` when you hold a member row here, `null` when you do not.) Drive your UI off this rather than guessing: a permission check is a one-line `.includes()` on the result.
+The bearer-token user's resolved standing on a workspace — `{ reasons, capabilities, permissions, rank }`. **Self-service**, so nothing is fenced here. (No `relativeRank`: it is an offset from you, and here the subject *is* you, so `rank` is the coordinate this read reports.) Drive your UI off this rather than guessing: a permission check is a one-line `.includes()` on the result.
 
 `reasons` is an array of structured `{ type, viaWorkspaceId? }` entries (`viaWorkspaceId` on `ancestor-owner` / `reach-holder` only). `capabilities` is the fully-resolved set and **`view` is implied by every other capability** — any user with standing carries it, while a stranger gets `reasons: []` and an empty set.
 

@@ -77,7 +77,7 @@ Returns the updated [WorkspaceMember](/data-models/workspace-member) object.
     { "error": "The 'edit-member-access' capability is required to edit access fields.", "code": "workspace/unauthorized" }
     ```
 
-    Cosmetic fields (`title`, `metadata`) — not raised when a member is editing only their own row:
+    Cosmetic fields (`title`, `metadata`) — not raised when a member is editing only their own `title`. Editing your own `metadata` still requires `edit-member-profile`:
 
     ```json
     { "error": "The 'edit-member-profile' capability is required to edit profile fields.", "code": "workspace/unauthorized" }

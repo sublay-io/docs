@@ -338,7 +338,7 @@ The same two fields exist on the `@sublay/js` and `@sublay/node` equivalents —
 
 The two are **mutually exclusive**: sending both is a `400`. Storage stays absolute — a relative offset is resolved to a number at write time and the member row holds that number.
 
-Reads return **both**. The roster, member-standing and authority reads each carry `rank` (absolute) alongside `relativeRank` (that member's position as an offset from *you*, where `-3` means "three rungs above you"). So there is no "write 2, read 5" asymmetry to reconcile — you can read back in the same coordinate you wrote in.
+Reads return **both**. The roster and member-standing reads each carry `rank` (absolute) alongside `relativeRank` (that member's position as an offset from *you*, where `-3` means "three rungs above you"). So there is no "write 2, read 5" asymmetry to reconcile — you can read back in the same coordinate you wrote in. The authority read carries `rank` only: its subject is *you*, so an offset from yourself could only ever be `0`.
 
 <Info>
   **`relativeRank: 1` is the happy path, and the invite default.** Omit *both* rank fields on an invite and the server applies `relativeRank: 1` — one rung below the inviter. That is well defined for every actor (an inviter with no member row here anchors at apex, so their default lands on rank 0) and, by construction, it can never fail the rank floor. There is no equivalent default on [Update Member](/api-reference/workspaces/members/update-member): omitting both there means **rank unchanged**, so editing someone's capabilities never quietly moves them on the ladder.
@@ -453,5 +453,5 @@ function CreateTeam() {
 | [`useFetchWorkspaceAuthority`](/hooks/workspaces/use-fetch-workspace-authority) | Resolve the current user's standing | Self-service |
 
 <Tip>
-  Drive your UI off [`useFetchWorkspaceAuthority`](/hooks/workspaces/use-fetch-workspace-authority) rather than guessing: it returns `{ reasons, capabilities, permissions, rank, relativeRank }`, so showing the "Remove member" button is `authority.capabilities.includes("remove-member")`. `reasons` are structured `{ type, viaWorkspaceId? }` entries — the same shape a roster entry carries — so you can also show *which* ancestor grants an inherited standing. And because **`view` is implied by every other capability**, `capabilities.includes("view")` doubles as "does this user have any standing here at all".
+  Drive your UI off [`useFetchWorkspaceAuthority`](/hooks/workspaces/use-fetch-workspace-authority) rather than guessing: it returns `{ reasons, capabilities, permissions, rank }`, so showing the "Remove member" button is `authority.capabilities.includes("remove-member")`. `reasons` are structured `{ type, viaWorkspaceId? }` entries — the same shape a roster entry carries — so you can also show *which* ancestor grants an inherited standing. And because **`view` is implied by every other capability**, `capabilities.includes("view")` doubles as "does this user have any standing here at all".
 </Tip>
