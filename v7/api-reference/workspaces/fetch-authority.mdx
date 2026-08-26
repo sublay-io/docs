@@ -4,11 +4,11 @@ api: "GET /v7/:projectId/workspaces/:id/authority/me"
 description: "The resolved standing of a user on a workspace — permissions as a service"
 ---
 
-Returns the caller's **resolved standing** on a workspace: `{ reasons, capabilities, permissions, rank, relativeRank }`, computed via the [authority resolver](/data-models/workspace#reach-and-the-wall-door-rule) (fast-path + bounded ancestor climb). This is the endpoint your authorization server reads (via the [node SDK](/node-sdk/workspaces)) to make its own app-level decisions.
+Returns the caller's **resolved standing** on a workspace: `{ reasons, capabilities, permissions, rank }`, computed via the [authority resolver](/data-models/workspace#reach-and-the-wall-door-rule) (fast-path + bounded ancestor climb). This is the endpoint your authorization server reads (via the [node SDK](/node-sdk/workspaces)) to make its own app-level decisions.
 
 `reasons` is an array of **structured entries** — `{ type, viaWorkspaceId? }` — distinguishing **`owner` / `ancestor-owner` / `member` / `reach-holder`**, so you always know *why* a user has what they have **and which workspace grants it**. It is the same object shape a [roster](/api-reference/workspaces/members/list-members) entry's `reasons` carries. `viaWorkspaceId` names the granting ancestor and is present on `ancestor-owner` / `reach-holder` only (`owner` / `member` are grants on the workspace itself). A user reaching in from several ancestors carries **one entry per granting ancestor**.
 
-This read is inherently a **self** read (or a privileged-key read of a named user), so `capabilities` / `permissions` / `rank` / `relativeRank` are always returned in full here — unlike the [member-standing read](/api-reference/workspaces/members/fetch-member-standing), which fences them. (The fence exists to stop a caller reconstructing *someone else's* rank; there is nobody else in this payload.)
+This read is inherently a **self** read (or a privileged-key read of a named user), so `capabilities` / `permissions` / `rank` are always returned in full here — unlike the [member-standing read](/api-reference/workspaces/members/fetch-member-standing), which fences them. (The fence exists to stop a caller reconstructing *someone else's* rank; there is nobody else in this payload.)
 
 <Note>
   There is **no** convenience `?permission=` check and **no** `can()` middleware. Sublay never consumes your opaque `permissions`, so a permission check is a one-line `.includes()` on the returned record:
@@ -43,8 +43,7 @@ This read is inherently a **self** read (or a privileged-key read of a named use
   ],
   "capabilities": ["view", "invite", "remove-member"],
   "permissions": ["deploy"],
-  "rank": 5,
-  "relativeRank": 0
+  "rank": 5
 }
 ```
 
@@ -52,7 +51,7 @@ This read is inherently a **self** read (or a privileged-key read of a named use
 - `capabilities` — the fully-resolved set (direct + reach + ownership). **`view` is implied by every other capability** — any user with standing on the workspace resolves with `view`, including a member whose stored `capabilities` array is empty. A user with no relation at all resolves to an empty set.
 - `permissions` — **per-node** (the direct membership on this workspace only; may be empty). Does not cascade.
 - `rank` — the direct-membership rank, or `null` for owners / ancestor-owners / reach-only holders.
-- `relativeRank` — the same position as an offset from the caller, and therefore **structurally degenerate on this endpoint**: the caller *is* the subject, so it is always `0` when they hold a member row here and `null` when they do not. It is returned anyway so all three workspace reads carry both coordinates and clients never special-case which one they are reading — but `rank` is the field to read here. It is meaningful on the [roster](/api-reference/workspaces/members/list-members) and [member-standing](/api-reference/workspaces/members/fetch-member-standing) reads, where the subject is somebody else.
+- There is **no `relativeRank`** on this read. It is an offset from the caller, and here the caller *is* the subject — so it could only ever be `0`, a constant dressed as a coordinate. `rank` is the position this endpoint reports. `relativeRank` is meaningful on the [roster](/api-reference/workspaces/members/list-members) and [member-standing](/api-reference/workspaces/members/fetch-member-standing) reads, where the subject is somebody else.
 
 ## Error Responses
 
