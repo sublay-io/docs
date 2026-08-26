@@ -35,7 +35,7 @@ Three project-level settings configure this bundle. They live under `workspaces`
 | Setting | Type | Default | What it does |
 |---------|------|---------|--------------|
 | `workspaces.inviteAcceptUrl` | `string` | *(none)* | The page in **your** app that surfaces workspace invitations. Invitation emails deep-link to it, with a fixed `?workspaceInviteId=<id>` appended (any query string you already have on the URL is preserved). **Required before any invitation can be created** — see the warning below. |
-| `workspaces.inheritsDefault` | `boolean` | `false` | The [`inheritsFromParent`](/data-models/workspace#reach-and-the-wall-door-rule) flag new workspaces are **born with**. `false` (the default) means every workspace starts **sealed** — no downward reach. Set it to `true` if your product wants an org's authority to flow into sub-workspaces by default. This is read at create time only; it is never accepted from client input, and changing it does not retroactively alter existing workspaces. |
+| `workspaces.inheritsDefault` | `boolean` | `false` | The [`inheritsFromParent`](/data-models/workspace#reach-and-the-wall-door-rule) flag new workspaces are **born with**. `false` (the default) means every workspace starts **sealed** — no downward reach. Set it to `true` if your product wants an org's authority to flow into sub-workspaces by default. This is read at create time only; it is never accepted from client input — sending `inheritsFromParent` on [Create Workspace](/api-reference/workspaces/create-workspace) is a `400`, not a silent override — and changing it does not retroactively alter existing workspaces. |
 | `workspaces.inheritEnforced` | `boolean` | `false` | Locks `inheritsFromParent` to the project default so workspace **owners cannot flip it**. While `true`, [`useUpdateWorkspaceInheritFlag`](/hooks/workspaces/use-update-workspace-inherit-flag) fails with `403 workspace/inherit-enforced`. Use it when the wall/door policy is a product decision rather than a per-team one. |
 
 <Warning>
@@ -140,12 +140,12 @@ The unbounded path survives on the rest — the guard-only routes (`updateWorksp
 
 ### Shapes the server rejects
 
-Seven request shapes are refused outright rather than ignored, all of them `400`s. Six carry `workspace/invalid-body` or `workspace/invalid-query`, depending on which side of the request the offending field sat on; the seventh is a malformed path parameter, which carries `workspace/invalid-params`.
+Eight request shapes are refused outright rather than ignored, all of them `400`s. Seven carry `workspace/invalid-body` or `workspace/invalid-query`, depending on which side of the request the offending field sat on; the eighth is a malformed path parameter, which carries `workspace/invalid-params`.
 
 They come from **two layers**, and knowing which one answered tells you what to fix:
 
 1. **A gate**, mounted ahead of every route on the bundle. It reads the raw request, so it behaves identically whichever endpoint you call and whatever that route declares.
-2. **Each route's own body and query schemas.** All 21 routes validate *both* sides, and every schema declares exactly the fields its endpoint accepts. A top-level field it does not declare is refused, not stripped.
+2. **Each route's own body and query schemas.** All 21 routes validate *both* sides, and every schema declares exactly the fields its endpoint accepts. A top-level field it does not declare is refused, not stripped. On the query side one check runs ahead of the schema and reads the raw query string rather than the parsed one — the length limit below — so it too behaves identically on every route.
 
 <AccordionGroup>
   <Accordion title="A body or query `userId` — 400">
@@ -201,6 +201,21 @@ They come from **two layers**, and knowing which one answered tells you what to 
     Two query parameters are the exception: `_` and `_t`, the automatic cache-busters some HTTP clients append, are dropped before the request is read. Nothing else is reserved — in particular tracing and correlation identifiers are *not*, because distributed tracing propagates in HTTP **headers** (`traceparent`, `X-B3-*`, `X-Amzn-Trace-Id`), never in the query string.
   </Accordion>
 
+  <Accordion title="A query string with 1,000 or more parameters — 400">
+    ```json
+    {
+      "error": "Too many query parameters: 1000 `&`-separated segments, and the limit is 999. The query parser silently discards everything past 1000 of them — including `actingUserId`, which would run this request unbound instead of on that user's behalf. Empty segments and unparseable ones count too.",
+      "code": "workspace/invalid-query"
+    }
+    ```
+
+    A workspaces request whose raw query string holds **1,000 or more `&`-separated segments** is refused before anything else about it is examined. The most any workspaces request may carry is 999; the largest query vocabulary on the bundle is five parameters, so no real call comes near it.
+
+    **This is a rule about the query string's length, not about which names are in it.** The parser's budget is spent per `&`-separated segment, and a segment that parses to nothing spends it just the same — so 1,000 bare ampersands (`?&&&…`), 1,000 copies of `__proto__=1` (a name the parser discards on sight, leaving no key behind), and 1,000 copies of an ordinary *declared* parameter such as `include=` all reach the limit identically and are all refused identically. Which names you used has nothing to do with it, and neither does whether any of them is reserved.
+
+    What makes the limit worth a rule is that the parser truncates **silently**: past the budget, everything beyond it is discarded with no error and no trace, and `actingUserId` goes with it. On this bundle a request naming no acting user is the app itself, so a silently dropped actor is a request that runs unbounded while its caller believes it was scoped to one person. Counting segments on the raw URL is the only rule that can close that — how many segments you sent is not a property of any field name, and after truncation there is nothing left in the parsed request for a schema or an allowlist to inspect.
+  </Accordion>
+
   <Accordion title="A repeated or nested `_` / `_t` — 400">
     ```json
     {
@@ -209,7 +224,9 @@ They come from **two layers**, and knowing which one answered tells you what to 
     }
     ```
 
-    The two cache-busters are the only query names dropped without being read, so they are also the only ones that could be used to flood the query string past the parser's 1,000-parameter ceiling — which truncates **silently**, taking `actingUserId` with it. Each must therefore arrive exactly once, as a scalar: `?_=1699000000` passes, `?_=1&_=2` and `?_[a]=1` do not. Repeating a *declared* parameter is refused by its own schema, which expects a single value and receives an array.
+    The two cache-busters are stripped before the strict schema runs, so no schema ever sees the shape they arrived in — this rule is what stands in for one on those two names. Each must arrive exactly once, as a scalar: `?_=1699000000` passes, `?_=1&_=2` (an array) and `?_[a]=1` (an object) do not. Repeating a *declared* parameter needs no rule of its own: its schema expects a single value, receives an array, and refuses it.
+
+    This is a rule about the **shape** those two names arrive in, and it is not what keeps a long query string from losing `actingUserId` — a query string long enough to be truncated is refused by the length limit above, whatever names it uses, and that check runs first.
   </Accordion>
 
   <Accordion title="A body no parser read, when the request names nobody — 400">
