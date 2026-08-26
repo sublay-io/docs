@@ -1,0 +1,126 @@
+---
+title: "Fetch Many Reputation Grants"
+api: "GET /v7/:projectId/reputation-grants"
+description: "List positive reputation grants by recipient, by sender, or by rewarded item"
+---
+
+import { SpaceReputationParams } from "/snippets/space-reputation-params.mdx";
+
+Returns a paginated list of reputation grants, newest first. Requires authentication (user token, service key, or master key) and the `reputation` bundle.
+
+<Warning>
+  **Only positive grants are ever returned — for every caller.** The `amount > 0` filter is baked into the query, so negative grants (your app's private moderation deductions) are unreachable here for a service or master key exactly as they are for a user token. Read them from [Fetch User Grant History](/api-reference/reputation-grants/fetch-user-grant-history) instead.
+</Warning>
+
+## One filter shape per request
+
+Exactly one filter is required, and the three shapes are **mutually exclusive** — they are not AND-ed:
+
+| Shape | Parameters | Answers |
+|-------|-----------|---------|
+| By recipient | `recipientId` | What this user received. |
+| By sender | `senderId` | What this user sent. |
+| By target | `targetType` + `targetId` | Who rewarded this item. |
+
+Supplying none returns `400 reputation-grant/missing-filter`; supplying more than one returns `400 reputation-grant/invalid-filter`. Combining shapes is rejected rather than intersected, because a target list narrowed by sender would render rows that no longer reconcile with the `summary` printed above them.
+
+## Query Parameters
+
+<ParamField query="page" type="number">
+  Page number (1-indexed). Defaults to `1`.
+</ParamField>
+
+<ParamField query="limit" type="number">
+  Results per page. Defaults to `20`, capped at `100`.
+</ParamField>
+
+<ParamField query="recipientId" type="string">
+  UUID. Grants credited to this user.
+</ParamField>
+
+<ParamField query="senderId" type="string">
+  UUID. Grants sent by this user.
+</ParamField>
+
+<ParamField query="targetType" type="string">
+  `"entity"`, `"comment"`, or `"chat-message"`. Supplied together with `targetId`.
+</ParamField>
+
+<ParamField query="targetId" type="string">
+  UUID of the rewarded record. Supplied together with `targetType`.
+</ParamField>
+
+<ParamField query="include" type="string">
+  Comma-separated associations to expand. Only `"user"` is supported — it hydrates **both** the sender and the recipient on every row.
+</ParamField>
+
+### Space-scoped reputation
+
+Grants carry their own `spaceId`, so this is a **context** endpoint: `spaceReputation: { spaceId: "context" }` scores each hydrated user against *that grant's own* space. The same granter appearing on two grants in different spaces therefore gets two correct numbers rather than one overwriting the other. Requires the `reputation` bundle — which this endpoint already does.
+
+<SpaceReputationParams variant="context" field="query" />
+
+## Response
+
+Returns `200` with the standard paginated envelope:
+
+```json
+{
+  "data": [ /* ReputationGrant[] */ ],
+  "pagination": {
+    "page": 1,
+    "pageSize": 20,
+    "totalPages": 3,
+    "totalItems": 47,
+    "hasMore": true
+  }
+}
+```
+
+On the **target** shape only, a `summary` block rides alongside the envelope, so a standalone "who rewarded this" view doesn't have to fetch the parent item just to learn the totals:
+
+```json
+{
+  "data": [ /* ... */ ],
+  "pagination": { /* ... */ },
+  "summary": { "total": 120, "count": 4, "viewerTotal": 20 }
+}
+```
+
+See [ReputationGrant](/data-models/reputation-grant) for the row shape and [GrantSummary](/data-models/reputation-grant#grantsummary) for the summary.
+
+<Note>
+  **Grant reads are never block-filtered.** Unlike entity and comment feeds, this endpoint has no `blockedFilter` and applies no block exclusion. Hiding a blocked granter's row while still counting their amount in the total would produce a "120 total, 70 shown" discrepancy no app can explain — so nothing is hidden, and the amounts you display always reconcile with the totals you display.
+</Note>
+
+## Error Responses
+
+<AccordionGroup>
+  <Accordion title="Missing Filter — 400">
+    ```json
+    { "error": "One filter is required: recipientId, senderId, or targetType + targetId.", "code": "reputation-grant/missing-filter" }
+    ```
+  </Accordion>
+  <Accordion title="Invalid Filter — 400">
+    ```json
+    { "error": "Filters are mutually exclusive: supply recipientId, senderId, or targetType + targetId — not more than one.", "code": "reputation-grant/invalid-filter" }
+    ```
+    Also returned when only one half of `targetType` / `targetId` is supplied.
+  </Accordion>
+  <Accordion title="Invalid Query — 400">
+    ```json
+    { "error": "...", "code": "reputation-grant/invalid-query" }
+    ```
+  </Accordion>
+  <Accordion title="Tables Not Available — 403">
+    ```json
+    {
+      "code": "database/tables-not-available",
+      "missingTables": ["ReputationGrants"],
+      "dashboardUrl": "https://…/<projectId>/database"
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+See also: [useFetchManyReputationGrants](/hooks/reputation/use-fetch-many-reputation-grants) · [useFetchManyReputationGrantsWrapper](/hooks/reputation/use-fetch-many-reputation-grants-wrapper) · [node-sdk](/v7/node-sdk/reputation) · [js-sdk](/v7/js-sdk/reputation)

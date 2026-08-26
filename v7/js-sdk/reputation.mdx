@@ -1,0 +1,100 @@
+---
+title: "Reputation"
+description: "Give and list reputation grants from the browser"
+---
+
+The `reputation` module gives reputation deliberately and reads grants back. It maps directly to the [Reputation Grants API](/api-reference/reputation-grants/create-reputation-grant).
+
+Because the JS SDK authenticates as an **end user** (bearer token), you never pass an actor `userId` — the sender is always the user the token belongs to. Naming somebody else as the sender requires a service key, which this SDK never holds.
+
+There is deliberately **no mint function**. Creating reputation from nothing — and destroying it — is service/master-key only and lives in [`@sublay/node`](/v7/node-sdk/reputation).
+
+Requires the `reputation` bundle. A `chat-message` target additionally needs the `chat` bundle.
+
+---
+
+### createGrant
+
+Transfers reputation from the logged-in user to another user. The amount leaves the sender's bucket and lands in the recipient's bucket **for the same space** — nothing is created, and reputation never crosses between the project-general bucket and a space bucket.
+
+```typescript
+const grant = await sublay.reputation.createGrant({
+  recipientId: "usr_def456",
+  amount: 50,
+  spaceId: "spc_789",
+  note: "Best answer",
+  targetType: "comment",
+  targetId: "cmt_012",
+});
+```
+
+<ParamField body="recipientId" type="string" required>The user receiving the reputation. Cannot be the logged-in user.</ParamField>
+<ParamField body="amount" type="number" required>
+  Whole number of at least `1`. Never zero, negative, or fractional — there is no upper bound other than the sender's balance.
+</ParamField>
+<ParamField body="spaceId" type="string | null">
+  The bucket both legs move in. Omitted or `null` = the project-general bucket.
+</ParamField>
+<ParamField body="note" type="string | null">Free-text note. Trimmed, up to 2000 characters.</ParamField>
+<ParamField body="metadata" type="object">Arbitrary key-value data. Up to 1 MB. Omit when unused.</ParamField>
+<ParamField body="targetType" type='"entity" | "comment" | "chat-message"'>
+  What the grant is for. Supplied together with `targetId`. An annotation only — it never determines which bucket is used, and need not be authored by the recipient.
+</ParamField>
+<ParamField body="targetId" type="string">The rewarded record's ID. Supplied together with `targetType`, and must exist.</ParamField>
+
+**Returns** — `Promise<ReputationGrant>` with `sourceType: "user"`.
+
+Common rejections: `409 reputation-grant/insufficient-reputation` (the chosen bucket is short — nothing moved), `400 reputation-grant/self-grant`, `403 reputation-grant/user-grants-disabled` (the project routes grants through its own backend instead), and `404 reputation-grant/user-not-found` (which is also the non-disclosing answer when one party has blocked the other).
+
+<Warning>
+  **Grant creation is not idempotent.** A retried call creates a second grant and moves the points a second time. Guard your submit path.
+</Warning>
+
+---
+
+### listGrants
+
+Lists grants. Exactly one filter shape per request — by recipient, by sender, or by target. The shapes are mutually exclusive and are not AND-ed; supplying none or combining two is a `400`.
+
+```typescript
+const { data, pagination, summary } = await sublay.reputation.listGrants({
+  targetType: "entity",
+  targetId: "ent_abc123",
+  include: "user",
+  limit: 25,
+});
+
+console.log(summary?.total, "points from", summary?.count, "people");
+```
+
+<ParamField body="recipientId" type="string">What this user received.</ParamField>
+<ParamField body="senderId" type="string">What this user sent.</ParamField>
+<ParamField body="targetType" type='"entity" | "comment" | "chat-message"'>Who rewarded this item. Supplied together with `targetId`.</ParamField>
+<ParamField body="targetId" type="string">The rewarded record's ID. Supplied together with `targetType`.</ParamField>
+<ParamField body="page" type="number">Page number (1-indexed). Defaults to `1`.</ParamField>
+<ParamField body="limit" type="number">Page size. Defaults to `20`, capped at `100`.</ParamField>
+<ParamField body="include" type="string">
+  Comma-separated associations. Only `"user"` is supported — it hydrates both the sender and the recipient.
+</ParamField>
+<ParamField body="spaceReputation" type="object">
+  Opt-in per-user space reputation on the hydrated users. `{ spaceId: "context" }` scores each user against that grant's own space. See [Reputation](/data-models/reputation#reading-space-scoped-reputation).
+</ParamField>
+
+**Returns** — `Promise<{ data: ReputationGrant[]; pagination; summary? }>`. The `summary` block (`{ total, count, viewerTotal }`) is returned **only** on the target filter shape — it's exactly what a standalone "who rewarded this" view needs, so you don't have to fetch the parent item to print the totals.
+
+<Note>
+  **Only positive grants are returned, and lists are never block-filtered.** Negative grants (an app's moderation deductions) are invisible on every public surface. And unlike entity or comment feeds, grant lists apply no block exclusion — so the amounts you render always add up to the total you render beside them.
+</Note>
+
+---
+
+## Reading totals inline
+
+For per-item totals, don't page through this module — ask the read that already returns the item. Entities, comments and chat messages all accept a `"grants"` token in their `include` string (combine it with others, e.g. `"files,grants"`). Each item then carries `grants: { total, count, viewerTotal }`. See [GrantSummary](/data-models/reputation-grant#grantsummary).
+
+## See Also
+
+- [ReputationGrant data model](/data-models/reputation-grant)
+- [Create Reputation Grant API](/api-reference/reputation-grants/create-reputation-grant)
+- [Fetch Many Reputation Grants API](/api-reference/reputation-grants/fetch-many-reputation-grants)
+- [Node SDK reputation module](/v7/node-sdk/reputation)
