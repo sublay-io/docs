@@ -267,7 +267,7 @@ They come from **two layers**, and knowing which one answered tells you what to 
   **The guarantee covers TOP-LEVEL keys.** State it with that scope rather than as "unknown fields are impossible":
 
   - `metadata` is caller-owned JSON and is never inspected, so `{"metadata":{"actingUserId":"<bob>"}}` parses, names nobody, and runs as the app. That is correct — `metadata` is your data — but it is not an actor channel.
-  - A nested or wrapped actor is likewise nobody: `{ data: { actingUserId } }`, `?ctx[actingUserId]=`, an array-wrapped body. The top-level keys are what is read.
+  - A nested or wrapped actor is **refused**, not ignored — the wrapper itself is an undeclared top-level key: `{ data: { actingUserId } }` and `?ctx[actingUserId]=` both come back `400 Unrecognized key: "data"` / `"ctx"`, and an array-wrapped body is `400 Invalid input: expected object, received array`. (Don't confuse this with the node SDK's `{ data: { actingUserId } }` axios *config* for DELETE bodies — that sends `{ actingUserId }` as the body and works.)
 
   What makes that safe is not the field rules but the gate itself — no request reaches the unbounded path without clearing it. Spell `actingUserId` at the top level and none of this applies.
 </Note>
