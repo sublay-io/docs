@@ -22,6 +22,8 @@ Exactly one filter is required, and the three shapes are **mutually exclusive** 
 | By sender | `senderId` | What this user sent. |
 | By target | `targetType` + `targetId` | Who rewarded this item. |
 
+Grants pointing at a **chat message** are private to that conversation, which is what makes the choice of shape matter — see [Chat-message targets](#chat-message-targets-are-private) below.
+
 Supplying none returns `400 reputation-grant/missing-filter`; supplying more than one returns `400 reputation-grant/invalid-filter`. Combining shapes is rejected rather than intersected, because a target list narrowed by sender would render rows that no longer reconcile with the `summary` printed above them.
 
 ## Query Parameters
@@ -31,7 +33,7 @@ Supplying none returns `400 reputation-grant/missing-filter`; supplying more tha
 </ParamField>
 
 <ParamField query="limit" type="number">
-  Results per page. Defaults to `20`, capped at `100`.
+  Results per page. Defaults to `20`; the maximum is `100`. A larger value is rejected with `400 reputation-grant/invalid-query`, not silently clamped.
 </ParamField>
 
 <ParamField query="recipientId" type="string">
@@ -53,6 +55,21 @@ Supplying none returns `400 reputation-grant/missing-filter`; supplying more tha
 <ParamField query="include" type="string">
   Comma-separated associations to expand. Only `"user"` is supported — it hydrates **both** the sender and the recipient on every row.
 </ParamField>
+
+## Chat-message targets are private
+
+A grant row carries `targetType`, `targetId` and the granter's free-text `note`, and `include=user` hydrates both parties. On a `chat-message` target those facts describe a private conversation — who is talking to whom, and what one of them said about it — so the grant is exactly as private as the message it points at. Two rules enforce that, and they are why a grant you can see on a message does not turn up in a public list:
+
+- **The target shape is gated on conversation membership.** `targetType=chat-message` returns rows only to a caller who is an **active member** of the message's conversation. Every other user token gets `200` with an empty `data` array, `totalItems: 0`, and the zero summary `{ "total": 0, "count": 0, "viewerTotal": 0 }` — never a `403`, because an error would itself confirm the message exists. A user who has left the conversation counts as a non-member, and so does every user token on a project without the `chat` bundle, where there is no membership to have. The answer is byte-identical to the one a completely made-up message ID returns.
+- **The `recipientId` and `senderId` shapes never carry chat-message-targeted grants at all.** Those rows are excluded from both the page and `totalItems`, for every caller — including a member of the conversation, and including service and master keys. A "reputation I received / sent" feed therefore omits chat grants; render a message's grants from the target shape instead, where the viewer is a member by construction.
+
+Service and master keys pass the membership gate on the target shape unconditionally: they are the app's own backend, which has no membership and is already trusted to mint grants. They hold no viewer identity, so `viewerTotal` is `0` for them while `total` and `count` are real.
+
+Entity and comment targets are unaffected — those items are public, and both shapes return them normally. Grants with no target at all are returned by every shape.
+
+<Note>
+  The inline `grants` summary on the chat surfaces needs none of this. [List Messages](/api-reference/chat/messages/list-messages) and [Fetch Message](/api-reference/chat/messages/fetch-message) already refuse a non-member with `403 chat/not-a-member` before they read a message, so `include=grants` there is behind the conversation gate already.
+</Note>
 
 ### Space-scoped reputation
 
@@ -87,6 +104,8 @@ On the **target** shape only, a `summary` block rides alongside the envelope, so
 }
 ```
 
+`viewerTotal` is the calling user's own summed grants on the target, and is `0` for a service or master key, which has no viewer identity. The other two shapes return no `summary` key at all.
+
 See [ReputationGrant](/data-models/reputation-grant) for the row shape and [GrantSummary](/data-models/reputation-grant#grantsummary) for the summary.
 
 <Note>
@@ -109,8 +128,9 @@ See [ReputationGrant](/data-models/reputation-grant) for the row shape and [Gran
   </Accordion>
   <Accordion title="Invalid Query — 400">
     ```json
-    { "error": "...", "code": "reputation-grant/invalid-query" }
+    { "error": "limit: Too big: expected number to be <=100", "code": "reputation-grant/invalid-query" }
     ```
+    Shape failures from the query schema: a `limit` above `100`, a non-positive `page`, a malformed UUID (`"recipientId: Invalid UUID"`), or a `targetType` outside the three accepted values. The field path prefixes the message, so `error` reads `"<path>: <message>"`.
   </Accordion>
   <Accordion title="Tables Not Available — 403">
     ```json
@@ -122,5 +142,7 @@ See [ReputationGrant](/data-models/reputation-grant) for the row shape and [Gran
     ```
   </Accordion>
 </AccordionGroup>
+
+**Rate limit:** 100 requests per 5 minutes per IP. Exceeding it returns `429` with a plain-text message and no `code`.
 
 See also: [useFetchManyReputationGrants](/hooks/reputation/use-fetch-many-reputation-grants) · [useFetchManyReputationGrantsWrapper](/hooks/reputation/use-fetch-many-reputation-grants-wrapper) · [node-sdk](/v7/node-sdk/reputation) · [js-sdk](/v7/js-sdk/reputation)

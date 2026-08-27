@@ -41,7 +41,7 @@ Requires the `reputation` bundle.
 </ParamField>
 
 <ParamField query="limit" type="number">
-  Results per page. Defaults to `20`, capped at `100`.
+  Results per page. Defaults to `20`; the maximum is `100`. A larger value is rejected with `400 user/invalid-query`, not silently clamped.
 </ParamField>
 
 ## Response
@@ -79,13 +79,14 @@ Both counterparties are hydrated with a display-only projection — `id`, `name`
 <AccordionGroup>
   <Accordion title="Invalid Params — 400">
     ```json
-    { "error": "...", "code": "user/invalid-params" }
+    { "error": "userId: Invalid UUID", "code": "user/invalid-params" }
     ```
   </Accordion>
   <Accordion title="Invalid Query — 400">
     ```json
-    { "error": "...", "code": "user/invalid-query" }
+    { "error": "limit: Too big: expected number to be <=100", "code": "user/invalid-query" }
     ```
+    A `limit` above `100`, a non-positive `page`, or a `direction` outside `received` / `sent` / `all`. The field path prefixes the message, so `error` reads `"<path>: <message>"`.
   </Accordion>
   <Accordion title="Tables Not Available — 403">
     ```json
@@ -97,5 +98,7 @@ Both counterparties are hydrated with a display-only projection — `id`, `name`
     ```
   </Accordion>
 </AccordionGroup>
+
+**Rate limit:** 25 requests per 5 minutes per IP. Exceeding it returns `429` with a plain-text message and no `code`.
 
 See also: [ReputationGrant](/data-models/reputation-grant) · [Fetch Many Reputation Grants](/api-reference/reputation-grants/fetch-many-reputation-grants)

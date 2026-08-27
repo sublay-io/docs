@@ -17,11 +17,13 @@ Requires the `reputation` bundle (both `ReputationBuckets` and `ReputationGrants
 </ParamField>
 
 <ParamField body="amount" type="number" required>
-  Whole number of at least `1`, up to `2147483647`. A transfer can never be zero, negative, or fractional. There is no upper bound other than the sender's balance.
+  Whole number from `1` to `2147483647` (the signed 32-bit maximum, which is also the width of a reputation balance). A transfer can never be zero, negative, or fractional, and it can never exceed what the sender holds in the source bucket.
 </ParamField>
 
 <ParamField body="spaceId" type="string | null">
   UUID of the space whose bucket pays. Omitted or `null` means the project-general bucket. The reputation always lands in the recipient's bucket for the same space — reputation never crosses between the general bucket and a space bucket.
+
+  The space is validated before anything moves: an ID that names no space is rejected with `404 reputation-grant/space-not-found`, and naming a space on a project without the `spaces` bundle is rejected with `403 database/tables-not-available`.
 </ParamField>
 
 <ParamField body="note" type="string | null">
@@ -52,17 +54,18 @@ Both balances move: the sender's bucket and profile total drop by `amount`, the 
 
 ## Gating and blocks
 
-- **Project setting.** Projects can switch off user-initiated grants from the dashboard. When off, a user token is rejected with `403 reputation-grant/user-grants-disabled`; service and master keys still work, so peer transfers remain available when routed through your backend.
+- **Project setting.** The switch is `settings.reputationGrants.allowUserInitiated`, flipped from **Settings → SDK** in the dashboard. Only an explicit `false` closes the endpoint to user tokens — an absent key means grants are allowed — and the stored value survives unrelated settings updates, so it changes only when that key is explicitly sent. When the switch is off a user token is rejected with `403 reputation-grant/user-grants-disabled`; service and master keys still work, so peer transfers remain available when routed through your backend.
 - **Blocks.** If either party has blocked the other, a user grant is rejected in both directions — with the same non-disclosing answer as a missing user. Service and master keys ignore block relationships.
-- **Suspension.** A suspended user cannot send a grant. A suspended user can still receive one.
+- **Suspension.** A suspended user cannot send a grant, including on the mediated path — a service key naming a suspended `actingUserId` is rejected too. A master key bypasses the check. A suspended user can always receive a grant.
 
 ## Error Responses
 
 <AccordionGroup>
   <Accordion title="Invalid Body — 400">
     ```json
-    { "error": "amount must be greater than or equal to 1", "code": "reputation-grant/invalid-body" }
+    { "error": "amount: Too small: expected number to be >=1", "code": "reputation-grant/invalid-body" }
     ```
+    Field-level failures are prefixed with the field path, so `error` reads `"<path>: <message>"` — `"amount: Invalid input: expected int, received number"` for a fractional amount, `"recipientId: Invalid UUID"` for a malformed ID. The one whole-body rule has no path and so no prefix: supplying `targetType` without `targetId` (or the reverse) returns `"targetType and targetId must be supplied together"`.
   </Accordion>
   <Accordion title="Self Grant — 400">
     ```json
@@ -88,8 +91,14 @@ Both balances move: the sender's bucket and profile total drop by `amount`, the 
   </Accordion>
   <Accordion title="Suspended — 403">
     ```json
-    { "error": "...", "code": "user/suspended", "reason": "...", "endDate": "..." }
+    {
+      "error": "This account is suspended and cannot perform this action.",
+      "code": "user/suspended",
+      "reason": "...",
+      "endDate": "..."
+    }
     ```
+    `reason` and `endDate` are `null` when the suspension carries neither.
   </Accordion>
   <Accordion title="Tables Not Available — 403">
     ```json
@@ -99,7 +108,13 @@ Both balances move: the sender's bucket and profile total drop by `amount`, the 
       "dashboardUrl": "https://…/<projectId>/database"
     }
     ```
-    The `reputation` bundle is missing, or the target's bundle is (e.g. a `chat-message` target without `chat`).
+    The `reputation` bundle is missing, the target's bundle is (e.g. a `chat-message` target without `chat`), or a `spaceId` was supplied on a project without `spaces`. `missingTables` names exactly what is absent.
+  </Accordion>
+  <Accordion title="Space Not Found — 404">
+    ```json
+    { "error": "The space this grant targets does not exist.", "code": "reputation-grant/space-not-found" }
+    ```
+    The `spaceId` names no space in this project. Checked before any balance is touched, so nothing moves.
   </Accordion>
   <Accordion title="User Not Found — 404">
     ```json
@@ -109,15 +124,15 @@ Both balances move: the sender's bucket and profile total drop by `amount`, the 
   </Accordion>
   <Accordion title="Target Not Found — 404">
     ```json
-    { "error": "...", "code": "reputation-grant/target-not-found" }
+    { "error": "The grant target does not exist.", "code": "reputation-grant/target-not-found" }
     ```
-    The target record does not exist — or, for a `chat-message` target, the sender is not an active member of that conversation. The two cases are byte-identical so a caller holding a message ID cannot probe whether it exists.
+    The target record does not exist — or, for a `chat-message` target, the sender is not an active member of that conversation. The two cases are byte-identical so a caller holding a message ID cannot probe whether it exists. Mediated transfers are membership-checked on the named sender exactly as user tokens are.
   </Accordion>
   <Accordion title="Insufficient Reputation — 409">
     ```json
     { "error": "The sender does not have enough reputation in the source bucket.", "code": "reputation-grant/insufficient-reputation" }
     ```
-    Nothing moves. Also the answer when `spaceId` names a space the sender holds no bucket in.
+    Nothing moves. Also the answer when the `spaceId` names a real space the sender holds no funded bucket in.
   </Accordion>
   <Accordion title="Conflict — 409">
     ```json
@@ -126,5 +141,7 @@ Both balances move: the sender's bucket and profile total drop by `amount`, the 
     Retryable. Two simultaneous transfers from the same bucket can never both succeed against the same balance.
   </Accordion>
 </AccordionGroup>
+
+**Rate limit:** 50 requests per 5 minutes per IP. Exceeding it returns `429` with a plain-text message and no `code`.
 
 See also: [useCreateReputationGrant](/hooks/reputation/use-create-reputation-grant) · [node-sdk](/v7/node-sdk/reputation) · [js-sdk](/v7/js-sdk/reputation)

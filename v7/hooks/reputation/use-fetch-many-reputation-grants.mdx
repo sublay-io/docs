@@ -12,6 +12,8 @@ Exactly one filter shape per call — by recipient, by sender, or by target. The
 
 Only **positive** grants are ever returned. Negative grants are your app's private moderation deductions and are unreadable from every SDK surface.
 
+Grants pointing at a **chat message** are private to their conversation — see [Chat-message targets](#chat-message-targets) below.
+
 Requires the `reputation` bundle.
 
 ## Usage Example
@@ -44,7 +46,7 @@ function useRecentRewards(userId: string) {
 </ParamField>
 <ParamField path="targetId" type="string">The rewarded record's ID. Supplied together with `targetType`.</ParamField>
 <ParamField path="page" type="number">Page number (1-indexed). Defaults to `1`.</ParamField>
-<ParamField path="limit" type="number">Page size. Defaults to `20`, capped at `100` server-side.</ParamField>
+<ParamField path="limit" type="number">Page size. Defaults to `20`; the maximum is `100`. A larger value is rejected by the server with `400 reputation-grant/invalid-query` rather than clamped.</ParamField>
 <ParamField path="include" type="string | string[]">
   Associations to expand. Only `"user"` is supported — it hydrates **both** the sender and the recipient on every row.
 </ParamField>
@@ -61,6 +63,15 @@ Returns a `Promise` resolving to the paginated envelope:
 <ResponseField name="summary" type="GrantSummary | undefined">
   `{ total, count, viewerTotal }` for the target — returned **only** on the target filter shape, so a standalone "who rewarded this" view doesn't have to fetch the parent item to know the totals.
 </ResponseField>
+
+## Chat-message targets
+
+A grant on a chat message is as private as the message, so it surfaces differently depending on the shape you query:
+
+- `targetType: "chat-message"` returns rows only when the logged-in user is an **active member** of that message's conversation. Anyone else — a stranger, someone who left the conversation, or any user on a project without the `chat` bundle — gets a successful, empty result: `data` is `[]`, `pagination.totalItems` is `0`, and `summary` is `{ total: 0, count: 0, viewerTotal: 0 }`. It never throws, because an error would confirm the message exists.
+- `recipientId` and `senderId` never return chat-message-targeted grants at all, for any caller, even a member of the conversation. A "reputation I received" feed therefore shows entity, comment and untargeted grants only.
+
+Render a message's grants from the target shape, where the viewer is a member by construction. For the running totals on a message, ask the message read itself with `includeGrants: true` rather than paging this list.
 
 ## Failure Modes
 

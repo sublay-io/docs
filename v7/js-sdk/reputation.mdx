@@ -9,7 +9,7 @@ Because the JS SDK authenticates as an **end user** (bearer token), you never pa
 
 There is deliberately **no mint function**. Creating reputation from nothing — and destroying it — is service/master-key only and lives in [`@sublay/node`](/v7/node-sdk/reputation).
 
-Requires the `reputation` bundle. A `chat-message` target additionally needs the `chat` bundle.
+Requires the `reputation` bundle. A `chat-message` target additionally needs the `chat` bundle, and a `spaceId` needs the `spaces` bundle.
 
 ---
 
@@ -30,10 +30,10 @@ const grant = await sublay.reputation.createGrant({
 
 <ParamField body="recipientId" type="string" required>The user receiving the reputation. Cannot be the logged-in user.</ParamField>
 <ParamField body="amount" type="number" required>
-  Whole number of at least `1`. Never zero, negative, or fractional — there is no upper bound other than the sender's balance.
+  Whole number from `1` to `2147483647` (the signed 32-bit maximum). Never zero, negative, or fractional, and never more than the sender holds in the source bucket.
 </ParamField>
 <ParamField body="spaceId" type="string | null">
-  The bucket both legs move in. Omitted or `null` = the project-general bucket.
+  The bucket both legs move in. Omitted or `null` = the project-general bucket. Validated before anything moves: an ID naming no space is rejected with `404 reputation-grant/space-not-found`, and naming a space at all on a project without the `spaces` bundle is rejected with `403 database/tables-not-available`.
 </ParamField>
 <ParamField body="note" type="string | null">Free-text note. Trimmed, up to 2000 characters.</ParamField>
 <ParamField body="metadata" type="object">Arbitrary key-value data. Up to 1 MB. Omit when unused.</ParamField>
@@ -44,7 +44,7 @@ const grant = await sublay.reputation.createGrant({
 
 **Returns** — `Promise<ReputationGrant>` with `sourceType: "user"`.
 
-Common rejections: `409 reputation-grant/insufficient-reputation` (the chosen bucket is short — nothing moved), `400 reputation-grant/self-grant`, `403 reputation-grant/user-grants-disabled` (the project routes grants through its own backend instead), and `404 reputation-grant/user-not-found` (which is also the non-disclosing answer when one party has blocked the other).
+Common rejections: `409 reputation-grant/insufficient-reputation` (the chosen bucket is short — nothing moved), `400 reputation-grant/self-grant`, `403 reputation-grant/user-grants-disabled` (the project has `settings.reputationGrants.allowUserInitiated` set to `false` and routes grants through its own backend instead), `404 reputation-grant/space-not-found`, `404 reputation-grant/target-not-found` (which is also the answer when a `chat-message` target sits in a conversation the sender isn't an active member of), and `404 reputation-grant/user-not-found` (which is also the non-disclosing answer when one party has blocked the other).
 
 <Warning>
   **Grant creation is not idempotent.** A retried call creates a second grant and moves the points a second time. Guard your submit path.
@@ -72,7 +72,7 @@ console.log(summary?.total, "points from", summary?.count, "people");
 <ParamField body="targetType" type='"entity" | "comment" | "chat-message"'>Who rewarded this item. Supplied together with `targetId`.</ParamField>
 <ParamField body="targetId" type="string">The rewarded record's ID. Supplied together with `targetType`.</ParamField>
 <ParamField body="page" type="number">Page number (1-indexed). Defaults to `1`.</ParamField>
-<ParamField body="limit" type="number">Page size. Defaults to `20`, capped at `100`.</ParamField>
+<ParamField body="limit" type="number">Page size. Defaults to `20`; the maximum is `100`. A larger value is rejected with `400 reputation-grant/invalid-query` rather than clamped.</ParamField>
 <ParamField body="include" type="string">
   Comma-separated associations. Only `"user"` is supported — it hydrates both the sender and the recipient.
 </ParamField>
@@ -81,6 +81,10 @@ console.log(summary?.total, "points from", summary?.count, "people");
 </ParamField>
 
 **Returns** — `Promise<{ data: ReputationGrant[]; pagination; summary? }>`. The `summary` block (`{ total, count, viewerTotal }`) is returned **only** on the target filter shape — it's exactly what a standalone "who rewarded this" view needs, so you don't have to fetch the parent item to print the totals.
+
+<Note>
+  **Grants on chat messages are private to their conversation.** With `targetType: "chat-message"` the list is populated only when the token's user is an active member of that conversation; everyone else gets an empty list and a `{ total: 0, count: 0, viewerTotal: 0 }` summary rather than an error. The `recipientId` / `senderId` shapes never carry chat-message-targeted grants at all, so a "reputation I received" feed shows entity, comment and untargeted grants only.
+</Note>
 
 <Note>
   **Only positive grants are returned, and lists are never block-filtered.** Negative grants (an app's moderation deductions) are invisible on every public surface. And unlike entity or comment feeds, grant lists apply no block exclusion — so the amounts you render always add up to the total you render beside them.

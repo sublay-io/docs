@@ -45,6 +45,8 @@ A user's reputation lives in [buckets](/data-models/reputation) — one per spac
 - The general bucket is its own lane. Reputation cannot move between the general bucket and a space bucket in either direction.
 - Consequently, the total reputation held within a given space is unchanged by a transfer — it only changes hands.
 
+The named space must exist. Both write paths check it before touching a balance — an unknown `spaceId` is rejected with `404 reputation-grant/space-not-found`, and naming a space on a project without the `spaces` bundle with `403 database/tables-not-available`. Without that check a grant could fund a bucket for a space that does not exist: its score would still count toward its owner's profile total while being invisible in every space-scoped view.
+
 A transfer is rejected unless the source bucket holds at least the amount, evaluated at the moment of the transfer. A mint has no source, so it may drive a bucket below zero (buckets have no floor — downvotes can already take one negative).
 
 ## The target is an annotation
@@ -74,6 +76,15 @@ The summary covers **positive grants only**. When the token is requested on a pr
 </Warning>
 
 The full per-item list of individual grants comes from [Fetch Many Reputation Grants](/api-reference/reputation-grants/fetch-many-reputation-grants), not from the summary.
+
+## Grants on chat messages are private
+
+A grant row carries its `targetType`, `targetId` and the granter's free-text `note`, and a list read can hydrate both parties. On a `chat-message` target those facts describe a private conversation — who is talking to whom, and what one of them said about it — so such a grant is exactly as private as the message it points at:
+
+- **The target shape is gated on membership.** Listing grants by `targetType: "chat-message"` + `targetId` returns rows only to an **active member** of that message's conversation. Every other user token — a stranger, a member who has left, any user on a project without the `chat` bundle — gets a successful empty page with the zero summary, never a `403`, so the response cannot be used to prove the message exists. Service and master keys pass the gate unconditionally: they are the app's own backend, which holds no membership.
+- **The user-keyed shapes exclude them outright.** Listing by `recipientId` or `senderId` never returns a chat-message-targeted grant, for any caller, including a member of the conversation and including service and master keys. That is why a grant you can see on a message does not appear in a "reputation I received" feed. Render a message's grants on the message, from the target shape.
+
+Grants targeting an entity or a comment are unaffected — those items are public — and so are grants with no target at all. The inline summary on the chat reads needs no special rule: those endpoints already refuse a non-member with `403 chat/not-a-member` before they read a message.
 
 ## Negative grants are private
 

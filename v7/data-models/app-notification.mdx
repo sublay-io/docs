@@ -261,7 +261,7 @@ Triggered when a user is granted reputation — by another user, or by the app. 
 | `targetType` | `"entity" \| "comment" \| "chat-message" \| null \| undefined` | What the grant was for, if anything. |
 | `targetId` | `string \| null \| undefined` | ID of the rewarded record. |
 | `entityId`, `entityShortId`, `entityForeignId` | `string \| null \| undefined` | Id forms of an entity target. |
-| `commentId`, `commentForeignId` | `string \| null \| undefined` | Id forms of a comment target. |
+| `commentId`, `commentForeignId` | `string \| null \| undefined` | Id forms of a comment target. A comment target also carries `entityId`, since a comment can only be opened inside its entity. |
 | `messageId`, `conversationId` | `string \| null \| undefined` | Id forms of a chat-message target. Both are needed to place a message. |
 
 <Note>

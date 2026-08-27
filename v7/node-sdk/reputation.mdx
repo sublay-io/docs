@@ -12,7 +12,7 @@ Two things a service key does **not** get you here:
 - **Mediated transfers still respect the sender's balance.** Only `mintGrant` can create reputation or drive a bucket below zero.
 - **Negative grants are not readable through `listGrants`.** The `amount > 0` filter applies to every caller, service keys included. Read them from the [dashboard grant-history route](/api-reference/reputation-grants/fetch-user-grant-history).
 
-Requires the `reputation` bundle. A `chat-message` target additionally needs the `chat` bundle. Only `mintGrant` validates `spaceId` against the `spaces` bundle — on a transfer, an unusable `spaceId` simply finds no funded bucket and returns `409 reputation-grant/insufficient-reputation`.
+Requires the `reputation` bundle. A `chat-message` target additionally needs the `chat` bundle, and a `spaceId` needs the `spaces` bundle. `createGrant` and `mintGrant` validate `spaceId` identically: an ID naming no space is rejected with `404 reputation-grant/space-not-found` before anything moves, and naming a space on a project without `spaces` is rejected with `403 database/tables-not-available`.
 
 ---
 
@@ -39,10 +39,10 @@ const grant = await sublay.reputation.createGrant({
 </ParamField>
 <ParamField body="recipientId" type="string" required>The user credited. Must differ from `actingUserId`.</ParamField>
 <ParamField body="amount" type="number" required>
-  Whole number of at least `1`. Never zero, negative, or fractional — use `mintGrant` to create or destroy reputation.
+  Whole number from `1` to `2147483647` (the signed 32-bit maximum). Never zero, negative, or fractional — use `mintGrant` to create or destroy reputation. It can never exceed what the sender holds in the source bucket.
 </ParamField>
 <ParamField body="spaceId" type="string | null">
-  The bucket both legs move in. Omitted or `null` = the project-general bucket. Reputation never crosses between the general bucket and a space bucket.
+  The bucket both legs move in. Omitted or `null` = the project-general bucket. Reputation never crosses between the general bucket and a space bucket. Validated: an unknown space is rejected with `404 reputation-grant/space-not-found`.
 </ParamField>
 <ParamField body="note" type="string | null">Free-text note. Trimmed, up to 2000 characters.</ParamField>
 <ParamField body="metadata" type="object">Arbitrary key-value data. Up to 1 MB. Omit when unused.</ParamField>
@@ -53,7 +53,7 @@ const grant = await sublay.reputation.createGrant({
 
 **Returns** — `Promise<ReputationGrant>` with `sourceType: "user"`.
 
-Throws `409 reputation-grant/insufficient-reputation` when the sender's bucket is short — nothing moves. A grant is **not idempotent**: a retried call moves the points a second time.
+Throws `409 reputation-grant/insufficient-reputation` when the sender's bucket is short — nothing moves; that is also the answer when the named space is real but the sender holds no funded bucket in it. A mediated transfer is still checked against the sender's suspension and, for a `chat-message` target, against the sender's active membership of that conversation. A grant is **not idempotent**: a retried call moves the points a second time.
 
 ---
 
@@ -119,7 +119,7 @@ console.log(summary?.total, "points from", summary?.count, "people");
 <ParamField body="targetType" type='"entity" | "comment" | "chat-message"'>Who rewarded this item. Supplied together with `targetId`.</ParamField>
 <ParamField body="targetId" type="string">The rewarded record's ID. Supplied together with `targetType`.</ParamField>
 <ParamField body="page" type="number">Page number (1-indexed). Defaults to `1`.</ParamField>
-<ParamField body="limit" type="number">Page size. Defaults to `20`, capped at `100`.</ParamField>
+<ParamField body="limit" type="number">Page size. Defaults to `20`; the maximum is `100`. A larger value is rejected with `400 reputation-grant/invalid-query` rather than clamped.</ParamField>
 <ParamField body="include" type="string">
   Comma-separated associations. Only `"user"` is supported — it hydrates both the sender and the recipient.
 </ParamField>
@@ -128,6 +128,10 @@ console.log(summary?.total, "points from", summary?.count, "people");
 </ParamField>
 
 **Returns** — `Promise<{ data: ReputationGrant[]; pagination; summary? }>`. The `summary` block (`{ total, count, viewerTotal }`) is returned **only** on the target filter shape.
+
+<Note>
+  **Grants on chat messages are private to their conversation, and a service key does not lift that.** The `recipientId` / `senderId` shapes never carry chat-message-targeted grants, for any caller. The target shape does return them to a service key — it is the app's own backend, so it passes the membership gate that an ordinary user token has to satisfy — but with no viewer identity, so `summary.viewerTotal` is always `0`.
+</Note>
 
 <Warning>
   **A service key sees no negative grants here.** The `amount > 0` filter is baked into the query for every caller, so this is not the route for auditing moderation deductions — use [Fetch User Grant History](/api-reference/reputation-grants/fetch-user-grant-history), which requires `x-sublay-project-id` alongside your key.

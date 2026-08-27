@@ -59,7 +59,7 @@ Call `refresh` after issuing a grant to pull the new row and updated totals.
   Who rewarded this item. Supplied together with `targetId`.
 </ParamField>
 <ParamField path="targetId" type="string | null">The rewarded record's ID. Supplied together with `targetType`.</ParamField>
-<ParamField path="limit" type="number">Page size. Defaults to `10`.</ParamField>
+<ParamField path="limit" type="number">Page size. Defaults to `10`. The server's maximum is `100`; a larger value is rejected with `400 reputation-grant/invalid-query` rather than clamped.</ParamField>
 <ParamField path="include" type="string | string[]">
   Associations to expand. Only `"user"` is supported — it hydrates both the sender and the recipient.
 </ParamField>
@@ -77,6 +77,10 @@ Call `refresh` after issuing a grant to pull the new row and updated totals.
 <ResponseField name="hasMore" type="boolean">Whether more pages remain.</ResponseField>
 <ResponseField name="loadMore" type="() => void">Advance to the next page and append.</ResponseField>
 <ResponseField name="refresh" type="() => void">Re-run the query from page 1.</ResponseField>
+
+<Note>
+  **Chat-message targets are private to their conversation.** With `targetType: "chat-message"`, the list is populated only when the logged-in user is an active member of that message's conversation; for anyone else — including someone who has left it — `grants` stays empty and `summary` comes back as `{ total: 0, count: 0, viewerTotal: 0 }` rather than erroring. And the `recipientId` / `senderId` shapes never include chat-message-targeted grants at all, for any caller. See [useFetchManyReputationGrants](/hooks/reputation/use-fetch-many-reputation-grants#chat-message-targets).
+</Note>
 
 <Note>
   `summary` is set from the first page and is not re-read by `loadMore` — it describes the whole target, not the rows loaded so far. Because grant lists are never block-filtered, the rows you render always add up to it.
