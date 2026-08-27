@@ -130,7 +130,7 @@ console.log(summary?.total, "points from", summary?.count, "people");
 **Returns** — `Promise<{ data: ReputationGrant[]; pagination; summary? }>`. The `summary` block (`{ total, count, viewerTotal }`) is returned **only** on the target filter shape.
 
 <Note>
-  **Grants on chat messages are private to their conversation, and a service key does not lift that.** The `recipientId` / `senderId` shapes never carry chat-message-targeted grants, for any caller. The target shape does return them to a service key — it is the app's own backend, so it passes the membership gate that an ordinary user token has to satisfy — but with no viewer identity, so `summary.viewerTotal` is always `0`.
+  **Grants on chat messages are private to their conversation — and a service key is exempt from that.** For a user token, every shape asks whether that user can see the underlying message and withholds the grant if they cannot. A service key answers to neither gate: the target shape returns its rows unconditionally, and the `recipientId` / `senderId` shapes apply no membership predicate to it at all, so a backend can enumerate every grant it minted, including grants on messages moderation has removed. It is the app's own backend, already trusted to mint grants and to read every conversation. It holds no viewer identity, so `summary.viewerTotal` is always `0`.
 </Note>
 
 <Warning>

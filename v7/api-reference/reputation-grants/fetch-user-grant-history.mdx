@@ -12,15 +12,15 @@ The route cannot issue grants. It is read-only.
 
 ## Authentication and headers
 
-<ParamField header="x-sublay-project-id" type="string" required>
-  The project UUID. Required for **every** caller, including service and master keys — it is how the server resolves which project's key you are presenting. Without it a raw project key is parsed as a dashboard session token and rejected with `403`.
+<ParamField header="x-sublay-project-id" type="string">
+  The project UUID. **Required when you authenticate with a service key** — that header is how the server finds the project whose key you are presenting, and without it a raw project key is parsed as a dashboard session token and rejected with `403`. Master keys and dashboard sessions only need the project named somewhere on the request, and may send it as a `?projectId=` query parameter instead; supplying both is fine as long as they match.
 </ParamField>
 
 <ParamField header="x-sublay-internal" type="string">
   Set to `true` when authenticating with a **master key**. Master keys are only recognized on requests carrying this header.
 </ParamField>
 
-A service key is presented as the bearer credential alongside `x-sublay-project-id`. Dashboard sessions authenticate with their client JWT as usual.
+A service key is presented as the bearer credential alongside `x-sublay-project-id`. Dashboard sessions authenticate with their client JWT as usual, naming the project in the header or the query string.
 
 Requires the `reputation` bundle.
 
@@ -79,7 +79,7 @@ Both counterparties are hydrated with a display-only projection — `id`, `name`
 <AccordionGroup>
   <Accordion title="Invalid Params — 400">
     ```json
-    { "error": "userId: Invalid UUID", "code": "user/invalid-params" }
+    { "error": "userId: Invalid UUID format", "code": "user/invalid-params" }
     ```
   </Accordion>
   <Accordion title="Invalid Query — 400">

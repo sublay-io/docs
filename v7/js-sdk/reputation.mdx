@@ -83,7 +83,7 @@ console.log(summary?.total, "points from", summary?.count, "people");
 **Returns** — `Promise<{ data: ReputationGrant[]; pagination; summary? }>`. The `summary` block (`{ total, count, viewerTotal }`) is returned **only** on the target filter shape — it's exactly what a standalone "who rewarded this" view needs, so you don't have to fetch the parent item to print the totals.
 
 <Note>
-  **Grants on chat messages are private to their conversation.** With `targetType: "chat-message"` the list is populated only when the token's user is an active member of that conversation; everyone else gets an empty list and a `{ total: 0, count: 0, viewerTotal: 0 }` summary rather than an error. The `recipientId` / `senderId` shapes never carry chat-message-targeted grants at all, so a "reputation I received" feed shows entity, comment and untargeted grants only.
+  **Grants on chat messages are private to their conversation.** With `targetType: "chat-message"` the list is populated only when the token's user is a member of that conversation — having left it still counts; everyone else gets an empty list and a `{ total: 0, count: 0, viewerTotal: 0 }` summary rather than an error. The `recipientId` / `senderId` shapes run the same test per row, so the token holder's own "reputation I received" feed *does* carry the grants made on messages in their own conversations, while a grant on a conversation they are not in drops out of the page and out of `pagination.totalItems` together. On either shape, grants on a message moderation has removed are hidden.
 </Note>
 
 <Note>

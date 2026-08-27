@@ -65,7 +65,7 @@ Both balances move: the sender's bucket and profile total drop by `amount`, the 
     ```json
     { "error": "amount: Too small: expected number to be >=1", "code": "reputation-grant/invalid-body" }
     ```
-    Field-level failures are prefixed with the field path, so `error` reads `"<path>: <message>"` — `"amount: Invalid input: expected int, received number"` for a fractional amount, `"recipientId: Invalid UUID"` for a malformed ID. The one whole-body rule has no path and so no prefix: supplying `targetType` without `targetId` (or the reverse) returns `"targetType and targetId must be supplied together"`.
+    Field-level failures are prefixed with the field path, so `error` reads `"<path>: <message>"` — `"amount: Invalid input: expected int, received number"` for a fractional amount, `"recipientId: Invalid UUID format"` for a malformed ID. The one whole-body rule has no path and so no prefix: supplying `targetType` without `targetId` (or the reverse) returns `"targetType and targetId must be supplied together"`.
   </Accordion>
   <Accordion title="Self Grant — 400">
     ```json
@@ -104,11 +104,11 @@ Both balances move: the sender's bucket and profile total drop by `amount`, the 
     ```json
     {
       "code": "database/tables-not-available",
-      "missingTables": ["ReputationGrants"],
+      "missingTables": ["ReputationBuckets", "ReputationGrants"],
       "dashboardUrl": "https://…/<projectId>/database"
     }
     ```
-    The `reputation` bundle is missing, the target's bundle is (e.g. a `chat-message` target without `chat`), or a `spaceId` was supplied on a project without `spaces`. `missingTables` names exactly what is absent.
+    The `reputation` bundle is missing — the route names both of its tables, so a project without it is told about both — or the target's bundle is missing (e.g. a `chat-message` target without `chat`), or a `spaceId` was supplied on a project without `spaces`. `missingTables` names exactly what is absent.
   </Accordion>
   <Accordion title="Space Not Found — 404">
     ```json
