@@ -1,43 +1,9 @@
-# Mintlify Starter Kit
+# This repository has moved
 
-Use the starter kit to get your docs deployed and ready to customize.
+Sublay's documentation site has been consolidated into the [`sublay-io/monorepo`](https://github.com/sublay-io/monorepo) repository, alongside the rest of the Sublay SDK family.
 
-Click the green **Use this template** button at the top of this repo to copy the Mintlify starter kit. The starter kit contains examples with
+- **Source**: [`monorepo/docs`](https://github.com/sublay-io/monorepo/tree/main/docs)
+- **Live site**: [docs.sublay.io](https://docs.sublay.io) (unchanged — same site, now built from the new source location)
+- **Open issue preserved**: this repo's one open issue (#43) was recreated as [`monorepo`#83](https://github.com/sublay-io/monorepo/issues/83) before archival.
 
-- Guide pages
-- Navigation
-- Customizations
-- API reference pages
-- Use of popular components
-
-**[Follow the full quickstart guide](https://starter.mintlify.com/quickstart)**
-
-## Development
-
-Install the [Mintlify CLI](https://www.npmjs.com/package/mint) to preview your documentation changes locally. To install, use the following command:
-
-```
-npm i -g mint
-```
-
-Run the following command at the root of your documentation, where your `docs.json` is located:
-
-```
-mint dev
-```
-
-View your local preview at `http://localhost:3000`.
-
-## Publishing changes
-
-Install our GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app) to propagate changes from your repo to your deployment. Changes are deployed to production automatically after pushing to the default branch.
-
-## Need help?
-
-### Troubleshooting
-
-- If your dev environment isn't running: Run `mint update` to ensure you have the most recent version of the CLI.
-- If a page loads as a 404: Make sure you are running in a folder with a valid `docs.json`.
-
-### Resources
-- [Mintlify documentation](https://mintlify.com/docs)
+This repository is archived and read-only. Please open issues and pull requests against `sublay-io/monorepo` instead.
